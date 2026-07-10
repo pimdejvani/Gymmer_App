@@ -110,6 +110,15 @@ flutter.bat run -d chrome                     # run the app
 | `tools/vendor/model-viewer.min.js` | Vendored renderer for the stills + plate tools |
 | `gymmer_flutter/package.json` | Node dev deps; `npm install` before running tools |
 
+### Build & distribution (iOS, free sideload)
+| File | Contents |
+|---|---|
+| `.github/workflows/ios-build.yml` | CI on push to main/ios: builds unsigned iOS on a free `macos-15` runner, packages `Gymmer.ipa`, publishes a GitHub Release (`build-<run>`) + regenerates `apps.json`. Build number = run number → version auto-bumps to `1.0.<run>` |
+| `apps.json` (repo root) | SideStore/AltStore source manifest → latest Release `.ipa`. Committed back by CI. Device subscribes for free OTA auto-updates. Source URL: `https://raw.githubusercontent.com/pimdejvani/Gymmer_App/ios/apps.json` |
+| `gymmer_flutter/ios/` | Generated iOS platform (bundle id `com.gymmer.gymmerFlutter`). `flutter_launcher_icons` config + `assets/Gymmer_Logo.png` drive the app icon. `NSPhotoLibraryUsageDescription` still TODO — see `next_step.md` |
+
+Full sideload/CI walkthrough: `update.md` (2026-07-10) + `README.md`.
+
 ## How things connect
 
 ```
@@ -154,7 +163,9 @@ GymmerHome (or page state), which persists via the store then reloads.
 - `plans/` — empty unless a new active feature plan is created. Finished plans
   live in `backup/plans/`.
 - `update.md` — short change log, newest first
-- `README.md` — intro + how to run
+- `README.md` — intro + how to run + iOS build/sideload
+- `.github/workflows/ios-build.yml` — CI: iOS build → Release → SideStore source
+- `apps.json` — SideStore source manifest (CI-generated)
 - `docs/FUNCTIONS.md` — full feature spec
 - `docs/BACKEND_ARCHITECTURE.md` — DB schema/architecture
 - `docs/DECISIONS.md` — merged architecture decisions (was docs/adr/)

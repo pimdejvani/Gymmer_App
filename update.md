@@ -3,6 +3,35 @@
 Short log, newest first. Full historic detail is archived in `backup/`
 (gitignored) if ever needed.
 
+## 2026-07-10 — iOS platform + free CI build + SideStore sideload pipeline
+
+Done on branch `ios` (not yet merged to `main`).
+
+- Removed 13 unused `preview_*.png` debug renders (~36 MB) from the repo root
+  and gitignored `preview_*.png`. They were one-off comparison images from the
+  muscle-layer pipeline, referenced nowhere.
+- Generated `gymmer_flutter/ios/` (`flutter create --platforms=ios`). Bundle id
+  `com.gymmer.gymmerFlutter`, display name "Gymmer Flutter". No Mac needed to
+  generate; builds happen in CI. Deleted the generic README flutter re-created.
+- App icon set from `assets/Gymmer_Logo.png` via `flutter_launcher_icons`
+  (dev dep + config block in `pubspec.yaml`; run `dart run flutter_launcher_icons`).
+  iOS icons are flattened to RGB (no alpha) for App Store compliance. Android
+  legacy mipmaps regenerated too (no adaptive icon — logo is full-bleed).
+- New `.github/workflows/ios-build.yml` (runs on push to main/ios): builds an
+  **unsigned** iOS app on a free `macos-15` runner, packages it as `Gymmer.ipa`,
+  and on branch pushes publishes a GitHub Release (`build-<run>`) + regenerates
+  `apps.json`. Build number = CI run number, so every push auto-bumps the
+  version to `1.0.<run>` (iOS/SideStore see it as an update).
+- New `apps.json` at repo root — a SideStore/AltStore source manifest pointing
+  at the latest Release `.ipa`, committed back by CI each build. Subscribing a
+  device to it gives free over-the-air auto-updates (no Mac, no $99 account).
+  Source URL (branch `ios`):
+  `https://raw.githubusercontent.com/pimdejvani/Gymmer_App/ios/apps.json`.
+- Sideload path (Windows, free): install "Apple Devices" (Microsoft Store, gives
+  usbmuxd) → iloader installs SideStore with a free Apple ID → add the source →
+  install Gymmer from the Browse tab (NOT from file, or it won't auto-update) →
+  SideStore Background Refresh re-signs every 7 days (data survives re-sign).
+
 ## 2026-07-10 — Delts/abs rework + session editing + media pickers
 
 - Delts + abs anatomy layers now sample real fibre colour from an aligned

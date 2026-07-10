@@ -1,0 +1,46 @@
+name: iOS build
+
+# Builds the Flutter iOS app on a macOS runner. Unsigned build — proves the app
+# compiles for iOS without needing an Apple Developer account. Runs on push to
+# main/ios, on iOS-affecting PRs, and can be triggered manually.
+on:
+  push:
+    branches: [main, ios]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    name: Build unsigned iOS app
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: gymmer_flutter
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.4
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+
+      - name: Upload Runner.app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Runner-app
+          path: gymmer_flutter/build/ios/iphoneos/Runner.app
+          if-no-files-found: error

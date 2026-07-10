@@ -5,3 +5,7 @@ Future<String> copyExerciseMedia(
 }) async {
   return sourcePath;
 }
+
+Future<String?> resolveMediaPath(String storedPath) async {
+  return storedPath.trim().isEmpty ? null : storedPath;
+}

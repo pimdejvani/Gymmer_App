@@ -7,3 +7,9 @@ Future<String> copyExerciseMediaIntoAppStorage(
 }) {
   return copyExerciseMedia(sourcePath, exerciseName: exerciseName, kind: kind);
 }
+
+/// Resolves a stored media path (see [copyExerciseMediaIntoAppStorage]) to an
+/// absolute file path for display, or null if the file no longer exists.
+Future<String?> resolveExerciseMediaPath(String storedPath) {
+  return resolveMediaPath(storedPath);
+}

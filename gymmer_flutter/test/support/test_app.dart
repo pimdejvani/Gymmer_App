@@ -5,8 +5,12 @@ import 'package:gymmer_flutter/main.dart';
 /// Opens a file-backed SQLite store in a fresh temp directory and registers
 /// close + directory cleanup on test tear-down. Prefer this over
 /// [GymmerSqliteStore.memory] so tests exercise real filesystem I/O.
+///
+/// Seeds the demo catalog so tests have data to act on; the shipping app opens
+/// blank (see `openAppDatabase`, which never seeds).
 Future<GymmerSqliteStore> openTestStore() async {
   final opened = await GymmerSqliteStore.openTempFile();
+  opened.store.seedPrototypeData();
   addTearDown(() async {
     await opened.store.close();
     if (opened.tempDir.existsSync()) {
@@ -25,6 +29,7 @@ Future<GymmerSqliteStore> openTestStore() async {
 /// dedicated SQLite-only tests (they don't pump widgets).
 Future<GymmerSqliteStore> pumpGymmer(WidgetTester tester) async {
   final store = GymmerSqliteStore.memory();
+  store.seedPrototypeData();
   addTearDown(store.close);
   await tester.pumpWidget(GymmerApp(store: store));
   await tester.pumpAndSettle();

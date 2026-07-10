@@ -99,7 +99,6 @@ $columns
 
   @override
   Future<WorkoutStoreState> load() async {
-    _seedPrototypeDataIfEmpty();
     final exercises = _loadExercises();
     return WorkoutStoreState(
       exercises: exercises,
@@ -107,6 +106,41 @@ $columns
       history: WorkoutHistory(_loadHistoryRecords()),
       activeWorkout: _loadActiveWorkout(exercises),
     );
+  }
+
+  /// Populates the store with demo exercises, routines, and history when it is
+  /// empty. The shipping app never calls this (it starts blank); tests opt in
+  /// via the helpers in `test/support/test_app.dart`.
+  void seedPrototypeData() {
+    if (_count('exercises') > 0 || _count('routine_groups') > 0) return;
+    _transaction(() {
+      final exercises = prototypeExercises();
+      for (final exercise in exercises) {
+        _upsertExercise(exercise);
+      }
+      for (
+        var groupIndex = 0;
+        groupIndex < prototypeGroups(exercises).length;
+        groupIndex++
+      ) {
+        final group = prototypeGroups(exercises)[groupIndex];
+        final groupId = _ensureRoutineGroup(group.name, sortOrder: groupIndex);
+        for (
+          var routineIndex = 0;
+          routineIndex < group.routines.length;
+          routineIndex++
+        ) {
+          final routine = group.routines[routineIndex];
+          _execute(
+            'INSERT INTO routines (group_id, name, note, sort_order) VALUES (?, ?, ?, ?)',
+            [groupId, routine.name, routine.note, routineIndex],
+          );
+          _replaceRoutineExercises(_db.lastInsertRowId, routine);
+        }
+      }
+      _insertHistoryRecords(prototypeHistory(exercises).records);
+      _rebuildSnapshotsUnsafe();
+    });
   }
 
   @override
@@ -603,38 +637,6 @@ $columns
           volume: row['volume'] as double,
         ),
     ];
-  }
-
-  void _seedPrototypeDataIfEmpty() {
-    if (_count('exercises') > 0 || _count('routine_groups') > 0) return;
-    _transaction(() {
-      final exercises = prototypeExercises();
-      for (final exercise in exercises) {
-        _upsertExercise(exercise);
-      }
-      for (
-        var groupIndex = 0;
-        groupIndex < prototypeGroups(exercises).length;
-        groupIndex++
-      ) {
-        final group = prototypeGroups(exercises)[groupIndex];
-        final groupId = _ensureRoutineGroup(group.name, sortOrder: groupIndex);
-        for (
-          var routineIndex = 0;
-          routineIndex < group.routines.length;
-          routineIndex++
-        ) {
-          final routine = group.routines[routineIndex];
-          _execute(
-            'INSERT INTO routines (group_id, name, note, sort_order) VALUES (?, ?, ?, ?)',
-            [groupId, routine.name, routine.note, routineIndex],
-          );
-          _replaceRoutineExercises(_db.lastInsertRowId, routine);
-        }
-      }
-      _insertHistoryRecords(prototypeHistory(exercises).records);
-      _rebuildSnapshotsUnsafe();
-    });
   }
 
   List<Exercise> _loadExercises() {

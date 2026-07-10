@@ -28,6 +28,20 @@ Future<String> copyExerciseMedia(
   return relativeParts.join('/');
 }
 
+/// Resolves a stored media path to an absolute file path on disk, or null if
+/// the file is missing. Freshly-picked absolute paths are used as-is; app-owned
+/// relative paths (as returned by [copyExerciseMedia]) are joined onto the
+/// documents directory.
+Future<String?> resolveMediaPath(String storedPath) async {
+  if (storedPath.trim().isEmpty) return null;
+  if (p.isAbsolute(storedPath)) {
+    return await File(storedPath).exists() ? storedPath : null;
+  }
+  final documents = await getApplicationDocumentsDirectory();
+  final absolute = p.join(documents.path, storedPath);
+  return await File(absolute).exists() ? absolute : null;
+}
+
 String _slug(String value) {
   final slug = value
       .trim()

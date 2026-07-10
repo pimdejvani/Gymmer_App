@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/exercise_anatomy_panel.dart';
+import '../widgets/exercise_media.dart';
 import '../widgets/shared_widgets.dart';
 import 'create_exercise_page.dart';
 
@@ -123,24 +124,29 @@ class _ExerciseLibraryPageState extends State<ExerciseLibraryPage> {
                         color: Colors.transparent,
                         child: ListTile(
                           contentPadding: EdgeInsets.zero,
-                          leading: Container(
-                            width: 44,
-                            height: 44,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceHigh,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: exercise.thumbnailPath == null
-                                ? Text(
+                          leading: exercise.thumbnailPath == null
+                              ? Container(
+                                  width: 44,
+                                  height: 44,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surfaceHigh,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
                                     exercise.name.characters.first,
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w700,
                                       color: AppColors.textPrimary,
                                     ),
-                                  )
-                                : const Icon(Icons.image, size: 20),
-                          ),
+                                  ),
+                                )
+                              : ExerciseMediaThumb(
+                                  key: ValueKey(exercise.thumbnailPath),
+                                  path: exercise.thumbnailPath!,
+                                  isVideo: false,
+                                  openOnTap: false,
+                                ),
                           title: Text(exercise.name),
                           subtitle: Text(
                             [

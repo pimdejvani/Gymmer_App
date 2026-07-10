@@ -13,6 +13,7 @@ import '../data/media_storage.dart';
 import '../models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/exercise_anatomy_panel.dart';
+import '../widgets/exercise_media.dart';
 import '../widgets/body_muscle_painter.dart';
 import '../widgets/shared_widgets.dart';
 
@@ -208,25 +209,29 @@ class _CreateExercisePageState extends State<CreateExercisePage> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceHigh,
-                        borderRadius: BorderRadius.circular(12),
+                    if (thumbnailPath != null)
+                      ExerciseMediaThumb(
+                        key: ValueKey(thumbnailPath),
+                        path: thumbnailPath!,
+                        isVideo: false,
+                      )
+                    else
+                      Container(
+                        width: 44,
+                        height: 44,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceHigh,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.image_outlined, size: 20),
                       ),
-                      child: Icon(
-                        thumbnailPath == null
-                            ? Icons.image_outlined
-                            : Icons.image,
-                        size: 20,
-                      ),
-                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        thumbnailPath ?? 'No thumbnail selected.',
+                        thumbnailPath == null
+                            ? 'No thumbnail selected.'
+                            : 'Tap image to view',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(color: AppColors.textSecondary),
@@ -234,6 +239,7 @@ class _CreateExercisePageState extends State<CreateExercisePage> {
                     ),
                     if (thumbnailPath != null)
                       IconButton(
+                        tooltip: 'Remove thumbnail',
                         icon: const Icon(Icons.close),
                         onPressed: () => setState(() => thumbnailPath = null),
                       ),
@@ -287,17 +293,33 @@ class _CreateExercisePageState extends State<CreateExercisePage> {
                   for (var i = 0; i < media.length; i++)
                     ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        media[i].type == ExerciseMediaType.video
-                            ? Icons.videocam
-                            : Icons.image,
+                      leading: ExerciseMediaThumb(
+                        key: ValueKey(media[i].path),
+                        path: media[i].path,
+                        isVideo: media[i].type == ExerciseMediaType.video,
+                        openOnTap: false,
                       ),
                       title: Text(
-                        media[i].path,
+                        media[i].path.split(RegExp(r'[\\/]')).last,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      subtitle: Text(
+                        media[i].type == ExerciseMediaType.video
+                            ? 'Video · tap to play'
+                            : 'Image · tap to view',
+                      ),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => MediaViewerPage(
+                            path: media[i].path,
+                            isVideo:
+                                media[i].type == ExerciseMediaType.video,
+                          ),
+                        ),
+                      ),
                       trailing: IconButton(
+                        tooltip: 'Remove',
                         icon: const Icon(Icons.close),
                         onPressed: () => setState(() => media.removeAt(i)),
                       ),

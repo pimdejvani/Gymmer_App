@@ -190,6 +190,7 @@ void main() {
     });
 
     final s1 = GymmerSqliteStore.openPath(path);
+    s1.seedPrototypeData();
     final state1 = await s1.load();
     final seedExerciseCount = state1.exercises.length;
     final routine = state1.groups.first.routines.first;
@@ -241,6 +242,7 @@ void main() {
       });
 
       final s1 = GymmerSqliteStore.openPath(path);
+      s1.seedPrototypeData();
       final state1 = await s1.load();
       // Pick a routine (Legs A / Barbell Back Squat) that has no seed history
       // so the finished record we insert is the only match on that key.
@@ -298,6 +300,7 @@ void main() {
       });
 
       final s1 = GymmerSqliteStore.openPath(path);
+      s1.seedPrototypeData();
       final state1 = await s1.load();
       // Pick a routine (Legs A / Barbell Back Squat) that has no seed history
       // so the finished record we insert is the only match on that key.

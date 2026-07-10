@@ -13,6 +13,40 @@ import 'package:video_player/video_player.dart';
 import '../data/media_storage.dart';
 import '../theme/app_theme.dart';
 
+const _videoExtensions = {
+  'mp4',
+  'mov',
+  'm4v',
+  'avi',
+  'mkv',
+  'webm',
+  '3gp',
+  '3g2',
+  'hevc',
+};
+
+/// Heuristic: whether a picked file path points at a video (used because the
+/// combined media picker returns images and videos together).
+bool looksLikeVideo(String path) {
+  final dot = path.lastIndexOf('.');
+  if (dot < 0) return false;
+  return _videoExtensions.contains(path.substring(dot + 1).toLowerCase());
+}
+
+/// Reads the duration of the video at [path] via a throwaway controller, or
+/// null if it cannot be read. Used to enforce a max clip length on import.
+Future<Duration?> probeVideoDuration(String path) async {
+  final controller = VideoPlayerController.file(File(path));
+  try {
+    await controller.initialize();
+    return controller.value.duration;
+  } catch (_) {
+    return null;
+  } finally {
+    await controller.dispose();
+  }
+}
+
 /// Square preview tile for one media [path]. Images show the picture; videos
 /// show a play glyph. When [openOnTap] is true (default) tapping opens the
 /// full-screen [MediaViewerPage]; otherwise taps fall through to a parent

@@ -44,18 +44,62 @@ class _CreateExercisePageState extends State<CreateExercisePage> {
     super.dispose();
   }
 
+  static const _maxMedia = 5;
+  static const _maxVideoDuration = Duration(minutes: 1);
+
   Future<void> _pickThumbnail() async {
     final file = await _picker.pickImage(source: ImageSource.gallery);
     if (file == null || !mounted) return;
     setState(() => thumbnailPath = file.path);
   }
 
-  Future<void> _pickMedia(ExerciseMediaType type) async {
-    final file = type == ExerciseMediaType.video
-        ? await _picker.pickVideo(source: ImageSource.gallery)
-        : await _picker.pickImage(source: ImageSource.gallery);
-    if (file == null || !mounted) return;
-    setState(() => media.add(ExerciseMedia(path: file.path, type: type)));
+  /// One picker for both images and videos. Caps the collection at [_maxMedia]
+  /// and drops any video longer than [_maxVideoDuration].
+  Future<void> _addMedia() async {
+    final remaining = _maxMedia - media.length;
+    if (remaining <= 0) {
+      _showMessage('You can add up to $_maxMedia media items.');
+      return;
+    }
+    final files = await _picker.pickMultipleMedia(limit: remaining);
+    if (files.isEmpty || !mounted) return;
+
+    final accepted = <ExerciseMedia>[];
+    var skippedLong = 0;
+    for (final file in files) {
+      if (media.length + accepted.length >= _maxMedia) break;
+      final isVideo =
+          (file.mimeType?.startsWith('video/') ?? false) ||
+          looksLikeVideo(file.path);
+      if (isVideo) {
+        final duration = await probeVideoDuration(file.path);
+        if (duration != null && duration > _maxVideoDuration) {
+          skippedLong++;
+          continue;
+        }
+      }
+      accepted.add(
+        ExerciseMedia(
+          path: file.path,
+          type: isVideo ? ExerciseMediaType.video : ExerciseMediaType.image,
+        ),
+      );
+    }
+    if (!mounted) return;
+    if (accepted.isNotEmpty) setState(() => media.addAll(accepted));
+    if (skippedLong > 0) {
+      _showMessage(
+        skippedLong == 1
+            ? 'Skipped 1 video longer than 1 minute.'
+            : 'Skipped $skippedLong videos longer than 1 minute.',
+      );
+    }
+  }
+
+  void _showMessage(String text) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(text)));
   }
 
   Future<void> save() async {
@@ -228,13 +272,12 @@ class _CreateExercisePageState extends State<CreateExercisePage> {
                       ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        thumbnailPath == null
-                            ? 'No thumbnail selected.'
-                            : 'Tap image to view',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: AppColors.textSecondary),
+                      child: OutlinedButton.icon(
+                        onPressed: () => unawaited(_pickThumbnail()),
+                        icon: const Icon(Icons.photo_library_outlined),
+                        label: Text(
+                          thumbnailPath == null ? 'Choose Image' : 'Change Image',
+                        ),
                       ),
                     ),
                     if (thumbnailPath != null)
@@ -245,14 +288,6 @@ class _CreateExercisePageState extends State<CreateExercisePage> {
                       ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () => unawaited(_pickThumbnail()),
-                  icon: const Icon(Icons.photo_library_outlined),
-                  label: Text(
-                    thumbnailPath == null ? 'Choose Image' : 'Change Image',
-                  ),
-                ),
               ],
             ),
           ),
@@ -261,27 +296,31 @@ class _CreateExercisePageState extends State<CreateExercisePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Media',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
+                Row(
                   children: [
-                    OutlinedButton.icon(
-                      onPressed: () =>
-                          unawaited(_pickMedia(ExerciseMediaType.image)),
-                      icon: const Icon(Icons.image),
-                      label: const Text('Add Image'),
+                    Text(
+                      'Media',
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    OutlinedButton.icon(
-                      onPressed: () =>
-                          unawaited(_pickMedia(ExerciseMediaType.video)),
-                      icon: const Icon(Icons.videocam),
-                      label: const Text('Add Video'),
+                    const Spacer(),
+                    Text(
+                      '${media.length}/$_maxMedia',
+                      style: const TextStyle(color: AppColors.textSecondary),
                     ),
                   ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Up to $_maxMedia items · videos max 1 minute.',
+                  style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: media.length >= _maxMedia
+                      ? null
+                      : () => unawaited(_addMedia()),
+                  icon: const Icon(Icons.perm_media_outlined),
+                  label: const Text('Add Photos or Videos'),
                 ),
                 const SizedBox(height: 8),
                 if (media.isEmpty)
@@ -300,14 +339,14 @@ class _CreateExercisePageState extends State<CreateExercisePage> {
                         openOnTap: false,
                       ),
                       title: Text(
-                        media[i].path.split(RegExp(r'[\\/]')).last,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        media[i].type == ExerciseMediaType.video
+                            ? 'Video'
+                            : 'Image',
                       ),
                       subtitle: Text(
                         media[i].type == ExerciseMediaType.video
-                            ? 'Video · tap to play'
-                            : 'Image · tap to view',
+                            ? 'Tap to play'
+                            : 'Tap to view',
                       ),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(

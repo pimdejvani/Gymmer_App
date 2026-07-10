@@ -38,9 +38,19 @@ jobs:
       - name: Build iOS (no codesign)
         run: flutter build ios --release --no-codesign
 
-      - name: Upload Runner.app
+      # Package the unsigned .app into an .ipa (Payload/ zip). Not code-signed —
+      # AltStore/SideStore re-signs it with a free Apple ID when sideloading.
+      - name: Package unsigned IPA
+        working-directory: gymmer_flutter/build/ios/iphoneos
+        run: |
+          mkdir -p Payload
+          cp -R Runner.app Payload/
+          zip -r9 Gymmer.ipa Payload
+          rm -rf Payload
+
+      - name: Upload IPA
         uses: actions/upload-artifact@v5
         with:
-          name: Runner-app
-          path: gymmer_flutter/build/ios/iphoneos/Runner.app
+          name: Gymmer-ipa
+          path: gymmer_flutter/build/ios/iphoneos/Gymmer.ipa
           if-no-files-found: error

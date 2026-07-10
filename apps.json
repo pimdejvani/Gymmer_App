@@ -6,13 +6,13 @@
       "name": "Gymmer",
       "bundleIdentifier": "com.gymmer.gymmerFlutter",
       "developerName": "pimdej",
-      "version": "1.0.8",
+      "version": "1.0.9",
       "versionDate": "2026-07-10",
-      "downloadURL": "https://github.com/pimdejvani/Gymmer_App/releases/download/build-8/Gymmer.ipa",
+      "downloadURL": "https://github.com/pimdejvani/Gymmer_App/releases/download/build-9/Gymmer.ipa",
       "localizedDescription": "Offline iPhone-first workout tracker.",
       "iconURL": "https://raw.githubusercontent.com/pimdejvani/Gymmer_App/ios/gymmer_flutter/assets/Gymmer_Logo.png",
       "tintColor": "6C3EF5",
-      "size": 12589012
+      "size": 12595072
     }
   ]
 }

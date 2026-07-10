@@ -1,14 +1,20 @@
 name: iOS build
 
-# Builds the Flutter iOS app on a macOS runner. Unsigned build — proves the app
-# compiles for iOS without needing an Apple Developer account. Runs on push to
-# main/ios, on iOS-affecting PRs, and can be triggered manually.
+# Builds the Flutter iOS app on a macOS runner (unsigned — no Apple Developer
+# account needed), packages it as an .ipa, publishes it as a GitHub Release, and
+# updates a SideStore source manifest (apps.json) so a device subscribed to the
+# source auto-updates. Build number is the CI run number, so every push bumps
+# the app version automatically.
 on:
   push:
     branches: [main, ios]
+    paths-ignore: [apps.json]   # avoid a loop: the apps.json commit-back below
   pull_request:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write   # create Releases and commit apps.json back
 
 jobs:
   build-ios:
@@ -35,11 +41,13 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
+      # Build number = CI run number so each push produces a higher version that
+      # iOS/SideStore recognises as an update.
       - name: Build iOS (no codesign)
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
 
-      # Package the unsigned .app into an .ipa (Payload/ zip). Not code-signed —
-      # AltStore/SideStore re-signs it with a free Apple ID when sideloading.
+      # Package the unsigned .app into an .ipa (Payload/ zip). SideStore re-signs
+      # it with a free Apple ID when installing.
       - name: Package unsigned IPA
         working-directory: gymmer_flutter/build/ios/iphoneos
         run: |
@@ -48,9 +56,61 @@ jobs:
           zip -r9 Gymmer.ipa Payload
           rm -rf Payload
 
-      - name: Upload IPA
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v5
         with:
           name: Gymmer-ipa
           path: gymmer_flutter/build/ios/iphoneos/Gymmer.ipa
           if-no-files-found: error
+
+      # ---- Auto-update pipeline (branch pushes only, not PRs) ----
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Build ${{ github.run_number }}
+          files: gymmer_flutter/build/ios/iphoneos/Gymmer.ipa
+
+      - name: Generate SideStore source (apps.json)
+        if: github.event_name == 'push'
+        working-directory: ${{ github.workspace }}
+        run: |
+          IPA="gymmer_flutter/build/ios/iphoneos/Gymmer.ipa"
+          SIZE=$(stat -f%z "$IPA")
+          DATE=$(date -u +%Y-%m-%d)
+          URL="https://github.com/${{ github.repository }}/releases/download/build-${{ github.run_number }}/Gymmer.ipa"
+          ICON="https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/gymmer_flutter/assets/Gymmer_Logo.png"
+          jq -n \
+            --arg ver "1.0.${{ github.run_number }}" \
+            --arg date "$DATE" \
+            --arg url "$URL" \
+            --arg icon "$ICON" \
+            --argjson size "$SIZE" \
+            '{
+              name: "Gymmer",
+              identifier: "com.gymmer.sidestore-source",
+              apps: [{
+                name: "Gymmer",
+                bundleIdentifier: "com.gymmer.gymmerFlutter",
+                developerName: "pimdej",
+                version: $ver,
+                versionDate: $date,
+                downloadURL: $url,
+                localizedDescription: "Offline iPhone-first workout tracker.",
+                iconURL: $icon,
+                tintColor: "6C3EF5",
+                size: $size
+              }]
+            }' > apps.json
+
+      - name: Commit apps.json back
+        if: github.event_name == 'push'
+        working-directory: ${{ github.workspace }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps.json
+          git diff --staged --quiet || git commit -m "Update SideStore source to build ${{ github.run_number }} [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}

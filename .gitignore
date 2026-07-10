@@ -30,3 +30,6 @@ node_modules/
 
 # Backup folder
 backup/
+
+# Debug/preview render outputs (not app assets)
+preview_*.png

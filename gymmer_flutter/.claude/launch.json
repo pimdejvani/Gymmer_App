@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "gymmer-web",
+      "runtimeExecutable": "C:\\Users\\pimde\\develop\\flutter\\bin\\flutter.bat",
+      "runtimeArgs": ["run", "-d", "chrome", "--web-port=5555"],
+      "port": 5555
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+cd C:\Users\pimde\Desktop\pimdej\gym_app_iphone\flutter_only\gymmer_flutter; C:\Users\pimde\develop\flutter\bin\flutter.bat run -d chrome

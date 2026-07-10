@@ -1,0 +1,26 @@
+{
+  "_comment": "Highlight template: exercise muscle group -> list of mesh names in full-body.glb. Names may omit the '.r' side suffix; the build tool resolves them against the actual model.",
+  "groups": {
+    "Abs": ["Rectus abdominal muscle", "External abdominal oblique muscle", "Internal abdominal oblique muscle", "Transverse abdominal muscle", "Pyramidalis muscle"],
+    "Chest": ["Pectoralis major"],
+    "Front Delt": ["Clavicular part of deltoid muscle"],
+    "Side Delt": ["Acromial part of deltoid muscle"],
+    "Rear Delt": ["Spinal part of deltoid muscle"],
+    "Biceps": ["Long head of biceps brachii", "Short head of biceps brachii", "Brachialis muscle"],
+    "Triceps": ["Medial head of triceps brachii", "Long head of triceps brachii", "Lateral head of triceps brachii"],
+    "Forearms": ["Flexor digitorum superficialis radial head", "Brachioradialis muscle", "Flexor carpi radialis"],
+    "Traps": ["Transverse part of trapezius muscle"],
+    "Rhomboids": ["Rhomboid major muscle", "Rhomboid minor muscle"],
+    "Lats": ["Latissimus dorsi"],
+    "Quads": ["Vastus lateralis muscle", "Rectus femoris", "Vastus medialis muscle"],
+    "Glutes": ["Gluteus maximus muscle", "Gluteus medius muscle"],
+    "Hamstrings": ["Semimembranosus muscle", "Semitendinosus muscle", "Long head of biceps femoris"],
+    "Calves": ["Medial head of gastrocnemius", "Lateral head of gastrocnemius"]
+  },
+  "removeFromPectoralGirdleMuscles": [
+    "Clavicular head of pectoralis major muscle.r",
+    "Sternocostal head of pectoralis major muscle.r",
+    "Trapezius muscle.r",
+    "Ascending part of Trapezius muscle.r"
+  ]
+}

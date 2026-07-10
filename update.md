@@ -1,0 +1,209 @@
+# GYMMER Update Log
+
+Short log, newest first. Full historic detail is archived in `backup/`
+(gitignored) if ever needed.
+
+## 2026-07-10 — Delts/abs rework + session editing + media pickers
+
+- Delts + abs anatomy layers now sample real fibre colour from an aligned
+  colour plate (new `tools/render_color_plate.js`; `npm run plate` →
+  `npm run layers`) instead of the old `upper-limb.glb` / thorax-glb overrides
+  and the rectus-sheath overlay hack. The `Deltoid muscle.r` texture is cut by
+  the Front/Rear/Side part masks (Side = `mask − (Front ∪ Rear)`); abs uses the
+  whole abdominal-wall mask. Plate is rendered from `full-body.glb` at the still
+  camera, so it is pixel-aligned to the masks (no projection mismatch). Abs
+  reads pale, faithful to the tendon-heavy texture. Pipeline documented in
+  `docs/ANATOMY_STILLS.md` (detailed spec archived in `backup/plans/`).
+  (Tooling gotchas handled: Draco decompress + Chromium
+  `--enable-unsafe-swiftshader`.)
+- Profile workout detail: removed the "Edit Routine" entry point; the app-bar
+  Edit now opens a whole-session editor (`screens/profile/edit_session_page.dart`)
+  — edit the duration (h:m) and every exercise's sets (add / swipe-delete) with
+  a live session summary (Sets / Volume / Reps); exercises can't be added or
+  removed. New store method `updateCompletedWorkoutTimes` in both stores.
+- Create/Edit Exercise thumbnail + media now pick from the device photo library
+  via `image_picker` (Choose Image / Add Image / Add Video) instead of typing a
+  path or URL. iOS needs `NSPhotoLibraryUsageDescription` once `ios/` is
+  generated (tracked in `next_step.md`).
+- Library rows gained a per-row anatomy-still expand (accessibility icon). The
+  2D muscle map was intentionally not added to routine/session views.
+- Home: routine folders no longer show a routine-count badge; a routine card's
+  exercise-count chip expands a per-exercise list (name + set count).
+- Checks: analyze clean, 65 tests pass, build web passes.
+
+## 2026-07-09 — Plans 08-11 + home/measures follow-ups
+
+- Added About GYMMER with required offline anatomy attribution text and a
+  Flutter package-license link; Profile feed now has a quiet About row.
+- Exercise stats now show Personal Records (heaviest, estimated 1RM, best set
+  volume, best session volume) plus a selectable dot/line trend chart.
+- Completed exercise sets can be edited from Profile → Exercises → detail;
+  SQLite and memory stores refresh history-derived Previous/best snapshots.
+- Create/Edit Exercise no longer shows the old Muscle Map card or still-combo
+  images. Anatomy now uses 3D-derived base stills plus per-muscle primary and
+  secondary diff layers; unselected muscles stay light gray in the base image.
+- Interim anatomy override: Abs currently uses `External abdominal oblique
+  muscle.r` texture plus an approximate anterior rectus-sheath overlay; this
+  is not final and will be rebuilt.
+- Interim anatomy override: Front/Side/Rear Delt currently use source
+  `Muscle tiles plain` over aligned masks; all three delt layers will be
+  rebuilt again.
+- Profile workout detail can open the source routine in Routine Builder.
+- Home routine folders can collapse/expand for the current app session.
+- Measures now has a selectable per-metric trend chart.
+
+## 2026-07-08 — Test + docs cleanup
+
+- Trimmed 6 low-value full-app widget smoke tests whose logic is already
+  covered by fast pure-Dart tests (library search-filter + sort-to-top,
+  profile chip-switch + calendar-open, records feed-badge + Exercises-page).
+  Kept every pure-logic, store/persistence, migration, and card-level test
+  plus the core `widget_test.dart` regression suite. 62 → 56 tests, faster.
+- Deleted stale/redundant `gymmer_flutter/README.md` (root `README.md` +
+  `structure_file.md` are the current entry points).
+
+## 2026-07-08 — Plan 07: Records (PR) + per-exercise stats
+
+- New `lib/domain/records_service.dart` (pure): `recordsIn` (sets strictly
+  beating every earlier session's best kg/volume; later sessions never erase
+  an old badge), `statsFor` (best kg/volume, sessions, top-set-per-session
+  series), `exercisesWithHistory`. Nothing new persisted — history is truth.
+- Feed/detail stat row → `Time | Volume | 🏅 Records` when N>0 (else Sets).
+- Finish → `🏅 N new record(s)` snackbar (computed in GymmerHome vs existing
+  sessions before finishing; theme-default snackbar).
+- New `screens/profile/exercise_stats_page.dart` (search list → best kg/vol/
+  sessions + best-kg bar chart reusing WeeklyBarChart + session list).
+  Dashboard gains **Exercises**.
+- New `test/records_test.dart`.
+
+## 2026-07-08 — Plan 06: Body measurements + progress picture
+
+- New `lib/models/measurement.dart`: MeasurementEntry (per-date, all metrics
+  nullable) + `measurementFields` descriptor list that drives the log form,
+  the summary, and SQLite columns from one place.
+- SQLite schema v3: `measurement_entries` (date_ms PK, photo_path, one REAL
+  per metric). Store CRUD `loadMeasurements`/`saveMeasurement` (upsert by
+  calendar date)/`deleteMeasurement` in both stores.
+- New `screens/profile/measurements_page.dart` (summary + list, swipe-delete,
+  `+` → log) and `log_measurement_page.dart` (blank form, latest as hint,
+  photo copied via existing media_storage). Dashboard gains **Measures**.
+- New `test/measurements_test.dart`.
+
+## 2026-07-08 — Plan 05: Workout calendar + week streak
+
+- New `lib/domain/streaks.dart` (pure): `weekStreak` (consecutive Monday-start
+  weeks; in-progress current week doesn't break it) + `restDaysThisWeek`.
+- New widgets: `dashboard_grid.dart` (2-col button grid, dumb entry list),
+  `month_grid.dart` (Sunday-first month; filled circle + label on workout
+  days, outlined today).
+- New `screens/profile/calendar_page.dart`: 🔥 streak / 🌙 rest chips + month
+  sections earliest→current (auto-scroll to bottom). DashboardGrid (Calendar
+  entry) inserted between chart and feed in profile_tab.
+- New `test/streaks_test.dart` + a Calendar widget test.
+
+## 2026-07-08 — Plan 04: Weekly progress chart
+
+- New `lib/domain/workout_aggregates.dart` (pure Dart): `ProgressMetric`,
+  `weeklyTotals` (Monday-start, zero-filled, bucket by startedAt), and
+  `thisWeekDuration`.
+- New `lib/widgets/profile/weekly_bar_chart.dart`: monochrome CustomPainter
+  (white bars, grey labels, sparse x labels, max/0 gridlines; no package).
+- Profile top: `Xh Ym this week` headline + chart + Duration/Volume/Reps
+  chips (Duration default) + range dropdown (3M=12/6M=26/Year=52 weeks).
+- New `test/aggregates_test.dart` + a chip-switch widget test.
+
+## 2026-07-08 — Plan 03: Profile tab + workout history feed
+
+- New `lib/models/completed_workout.dart` (CompletedWorkout +
+  CompletedWorkoutExercise; duration/totalVolumeKg/totalSets).
+- `buildCompletedWorkout` in finish_workout_service.dart (same qualifying-set
+  rule). Store `loadCompletedWorkouts()` (newest first): SQLite join over
+  completed_workout_* (no migration), memory store keeps a list + seeds 1
+  demo entry mirroring WorkoutHistory.seeded.
+- 3rd nav tab **Profile**: Workouts count header + feed
+  (`widgets/profile/workout_feed_card.dart`, Time/Volume/Sets, first 3
+  exercises, "See N more") → `screens/profile/workout_detail_page.dart`.
+- New `test/profile_test.dart`.
+
+## 2026-07-08 — Plan 02: Live rest timer + haptics + elapsed time
+
+- New `lib/domain/rest_timer.dart` (`RestTimerController extends
+  ChangeNotifier`): single `Timer.periodic(1s)`, `start/skip/addSeconds`,
+  `remaining`/`running`, `onFinished`; cancels on skip/finish/dispose.
+- Rest pill now live: `[−15]  mm:ss  [+15]`, tap time = skip; hidden when not
+  running; keeps the accent styling. Page owns one controller; completing a
+  set (re)starts it. On finish → `HapticFeedback.heavyImpact()` ×2 (200ms
+  apart) + `SystemSound.click`.
+- New `lib/widgets/workout/elapsed_time_label.dart`: self-contained h:mm:ss
+  ticker in the Active Workout app bar (own timer, cancelled in dispose).
+- Added `fake_async` dev dep; new `test/rest_timer_test.dart`.
+
+## 2026-07-08 — Plan 01: Library search + favorites
+
+- `Exercise.isFavorite` (mutable, last positional); store
+  `setExerciseFavorite`; SQLite schema v2 migration
+  (`exercises.is_favorite`); memory store mutates in place.
+- Library tab: pinned search field (case-insensitive name-contains) + per-row
+  star toggle (white/grey tokens, accent stays reserved); favorites sort
+  first. Exercise picker got the same search + favorites-first sort
+  (read-only). Shared `filterAndSortExercises` / `ExerciseSearchField`.
+- Tests: extracted `pumpGymmer`/`openTestStore` into
+  `test/support/test_app.dart`; new `test/library_test.dart`.
+
+## 2026-07-08 — Device audit passed; roadmap planned (plans/)
+
+- DB audit #1/#4 verified on a real Galaxy S22 Ultra (clean install OK; draft
+  survives Force Stop). Whole audit now green.
+- Decisions: app is free/non-commercial (abs NC license OK, attribution due);
+  release target iOS only (Android signing dropped); Hevy-style single-user
+  Profile tab approved (3rd nav tab — no social).
+- New `plans/` folder originally held self-contained session specs 01–08
+  (library search/favorites, live rest timer, profile+feed, weekly chart,
+  calendar/streak, measurements, records/exercise stats, about/credits).
+  Completed plans are now archived in `backup/plans/`; current workspace docs
+  keep only actionable next steps.
+
+## 2026-07-08 — Restructure: decentralized files, docs cleanup, −73 MB
+
+- Code decentralized so a session reads only what it needs (map in
+  `structure_file.md`): `models.dart` → barrel over `models/{exercise,routine,
+  workout,history}.dart`; home screen split into `widgets/home/*`; active
+  workout widgets into `widgets/workout/*`; `CreateExercisePage` into its own
+  file; muscle-map painter split from panels; shared `reorderProxyDecorator`
+  deduped into `shared_widgets.dart`.
+- Removed dead code/deps: `model_viewer_plus` (no runtime 3D anymore),
+  `runtime_flags*` (moved to backup), anatomy panel renamed
+  `exercise_anatomy_panel.dart` + themed.
+- Assets: kept only `full-body.glb` (stills source, no longer bundled into the
+  app — pubspec now ships generated anatomy layer PNGs). Other 5 glbs (~41 MB) +
+  node_modules (~26 MB) removed; `tools/render_muscle_stills.js` is now
+  self-contained (vendored model-viewer, serves the glb directly), puppeteer/
+  sharp added to package.json.
+- Docs: merged 8 ADRs → `docs/DECISIONS.md`; new `docs/ANATOMY_STILLS.md`
+  (pipeline + licensing); deleted/archived OPEN3DMODEL_RESEARCH,
+  IMPLEMENTATION_PLAN, UI_REDESIGN_SPEC, implement.md, NEXT_SESSION_PROMPT,
+  parent next_step/update; rewrote CONTEXT/README/next_step/update; added
+  `structure_file.md`. `backup/` + `node_modules/` gitignored.
+- Checks: analyze clean, 22 tests pass, build web passes.
+
+## 2026-07-08 — UI rebuild: black-minimal theme + native gestures
+
+- True-black theme (`lib/theme/app_theme.dart`), white primary buttons, green
+  accent as signal only; iOS-style transitions everywhere.
+- App shell: bottom nav (Workout / Library) + pulsing resume bar.
+- Gestures replace buttons: long-press drag (routines across folders,
+  exercise reorder), swipe-left action buttons (Delete / Remove / Replace)
+  via `flutter_slidable`. Move Up/Down arrows and per-card menus removed.
+- Anatomy tab removed at user request (stills panel on exercise page stays).
+
+## 2026-07-07 — Anatomy stills pipeline (replaces live 3D)
+
+- Exercise page shows pre-rendered front/back PNG layers from `full-body.glb`.
+  Current generation uses a light-gray base plus primary/secondary diff
+  overlays; regeneration: `docs/ANATOMY_STILLS.md`.
+
+## 2026-07-06 — SQLite store + DB audit (automated part)
+
+- drift store with numbered migrations, draft vs history tables, Previous /
+  best snapshot tables; audit checks #2 #3 #5–#8 proven by integration tests
+  (#1 #4 need a device — see next_step.md).

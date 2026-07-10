@@ -1,0 +1,32 @@
+# Flutter/Dart build and dependency files
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.flutter-credentials
+.packages
+.pub/
+
+# JavaScript dependencies
+node_modules/
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Local agent/editor state
+.claude/settings.local.json
+.claude/*.lock
+
+# Generated files
+*.log
+*.tmp
+*.swp
+*~
+
+# macOS
+.DS_Store
+
+# Backup folder
+backup/

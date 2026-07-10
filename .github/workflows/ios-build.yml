@@ -13,14 +13,14 @@ on:
 jobs:
   build-ios:
     name: Build unsigned iOS app
-    runs-on: macos-latest
+    runs-on: macos-15
     defaults:
       run:
         working-directory: gymmer_flutter
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -39,7 +39,7 @@ jobs:
         run: flutter build ios --release --no-codesign
 
       - name: Upload Runner.app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Runner-app
           path: gymmer_flutter/build/ios/iphoneos/Runner.app

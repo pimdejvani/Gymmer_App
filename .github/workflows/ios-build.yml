@@ -46,15 +46,24 @@ jobs:
       - name: Build iOS (no codesign)
         run: flutter build ios --release --no-codesign --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
 
-      # POC: ad-hoc sign the .app while embedding Runner.entitlements so the
-      # App Group request is present in the bundle for SideStore to register.
-      # Non-fatal: if this fails we fall back to the current unsigned .app.
-      # (App Group shared-container probe — see SceneDelegate.swift.)
-      - name: Embed App Group entitlement (ad-hoc)
+      # Ad-hoc sign so each binary carries its App Group request; SideStore
+      # re-signs on device and re-provisions those groups. Sign nested code
+      # (the widget .appex) FIRST with its own entitlements, then seal the
+      # outer .app. Non-fatal: any failure falls back to the unsigned .app.
+      - name: Embed App Group entitlements (ad-hoc)
         run: |
+          APP=build/ios/iphoneos/Runner.app
+          for appex in "$APP"/PlugIns/*.appex; do
+            [ -e "$appex" ] || continue
+            codesign --force --sign - \
+              --entitlements ios/GymmerWidget/GymmerWidget.entitlements \
+              "$appex" \
+              && echo "signed $(basename "$appex")" \
+              || echo "appex sign failed: $(basename "$appex")"
+          done
           codesign --force --sign - \
             --entitlements ios/Runner/Runner.entitlements \
-            build/ios/iphoneos/Runner.app \
+            "$APP" \
             && echo "ad-hoc entitlement embed OK" \
             || echo "ad-hoc embed failed — continuing with unsigned .app"
 

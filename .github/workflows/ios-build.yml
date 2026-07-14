@@ -46,6 +46,17 @@ jobs:
       - name: Build iOS (no codesign)
         run: flutter build ios --release --no-codesign --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
 
+      # POC: ad-hoc sign the .app while embedding Runner.entitlements so the
+      # App Group request is present in the bundle for SideStore to register.
+      # Non-fatal: if this fails we fall back to the current unsigned .app.
+      - name: Embed App Group entitlement (ad-hoc)
+        run: |
+          codesign --force --sign - \
+            --entitlements ios/Runner/Runner.entitlements \
+            build/ios/iphoneos/Runner.app \
+            && echo "ad-hoc entitlement embed OK" \
+            || echo "ad-hoc embed failed — continuing with unsigned .app"
+
       # Package the unsigned .app into an .ipa (Payload/ zip). SideStore re-signs
       # it with a free Apple ID when installing.
       - name: Package unsigned IPA

@@ -11,6 +11,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 
+import '../data/widget_bridge.dart';
 import '../data/workout_store.dart';
 import '../data/workout_store_factory.dart';
 import '../domain/finish_workout_service.dart';
@@ -84,6 +85,7 @@ class _GymmerHomeState extends State<GymmerHome> {
         activeWorkout = state.activeWorkout;
         loading = false;
       });
+      unawaited(WidgetBridge.writeCatalog(state.exercises));
     } catch (error) {
       if (!mounted) return;
       setState(() {

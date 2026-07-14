@@ -25,10 +25,6 @@ and `README.md` for the pipeline and source URL. Work lives on branch `ios`.
 
 Remaining iOS items:
 
-- **`NSPhotoLibraryUsageDescription`** is NOT yet in `ios/Runner/Info.plist`.
-  `image_picker` needs it for the thumbnail/media "Choose Image / Add Image /
-  Add Video" pickers on the Create/Edit Exercise page — **the app crashes on
-  first pick without it.** The `ios/` folder now exists, so this is actionable.
 - **Merge `ios` → `main`**, then point the SideStore source URL at
   `.../main/apps.json` (more stable than the `ios` branch).
 - Bundle id is `com.gymmer.gymmerFlutter` (flutter-create default). Fine for

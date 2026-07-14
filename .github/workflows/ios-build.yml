@@ -49,6 +49,7 @@ jobs:
       # POC: ad-hoc sign the .app while embedding Runner.entitlements so the
       # App Group request is present in the bundle for SideStore to register.
       # Non-fatal: if this fails we fall back to the current unsigned .app.
+      # (App Group shared-container probe — see SceneDelegate.swift.)
       - name: Embed App Group entitlement (ad-hoc)
         run: |
           codesign --force --sign - \

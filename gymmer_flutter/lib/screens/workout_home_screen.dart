@@ -99,7 +99,7 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
         loading = false;
       });
       unawaited(WidgetBridge.writeCatalog(state.exercises));
-      unawaited(WidgetBridge.writeRoutines(state.groups));
+      unawaited(WidgetBridge.writeRoutines(state.groups, state.history));
       _pushSessionToWidget(state.activeWorkout);
     } catch (error) {
       if (!mounted) return;
@@ -122,7 +122,7 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
       activeWorkout = state.activeWorkout;
     });
     unawaited(WidgetBridge.writeCatalog(state.exercises));
-    unawaited(WidgetBridge.writeRoutines(state.groups));
+    unawaited(WidgetBridge.writeRoutines(state.groups, state.history));
     _pushSessionToWidget(state.activeWorkout);
   }
 

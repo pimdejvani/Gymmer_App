@@ -38,15 +38,32 @@ class WidgetBridge {
     await _writeFile('catalog.json', jsonEncode(payload));
   }
 
-  /// Writes the flat list of routines (with their group) for the Start page.
-  static Future<void> writeRoutines(List<RoutineGroup> groups) async {
+  /// Writes the routines for the Start page — each with its FULL exercise list
+  /// (sets autofilled from [history], exactly like the app builds them) so the
+  /// widget can start a routine on its own and land straight on the Log page.
+  static Future<void> writeRoutines(
+    List<RoutineGroup> groups,
+    WorkoutHistory history,
+  ) async {
+    final routines = <Map<String, Object?>>[];
+    for (final group in groups) {
+      for (final routine in group.routines) {
+        final built = ActiveWorkout.fromRoutine(
+          routine,
+          groupName: group.name,
+          history: history,
+        );
+        routines.add({
+          'name': routine.name,
+          'group': group.name,
+          'exercises': [for (final ex in built.exercises) _encodeExercise(ex)],
+        });
+        built.dispose();
+      }
+    }
     final payload = <String, Object?>{
       'updatedAt': DateTime.now().toIso8601String(),
-      'routines': [
-        for (final group in groups)
-          for (final routine in group.routines)
-            {'name': routine.name, 'group': group.name},
-      ],
+      'routines': routines,
     };
     await _writeFile('routines.json', jsonEncode(payload));
   }
@@ -77,23 +94,26 @@ class WidgetBridge {
       'startedAt': workout.startedAt.toIso8601String(),
       'curEx': 0,
       'ui': {'page': 'log'},
-      'exercises': [
-        for (final ex in workout.exercises)
+      'exercises': [for (final ex in workout.exercises) _encodeExercise(ex)],
+    };
+  }
+
+  /// Serialises one workout exercise (name/muscle/equipment + rest + its sets)
+  /// to the shared schema. Shared by [encodeSession] and [writeRoutines].
+  static Map<String, Object?> _encodeExercise(WorkoutExercise ex) {
+    return {
+      'name': ex.exercise.name,
+      'muscle': ex.exercise.muscle,
+      'equipment': ex.exercise.equipment,
+      'rest': ex.restSeconds ?? _defaultRest,
+      'curSet': 0,
+      'sets': [
+        for (final set in ex.sets)
           {
-            'name': ex.exercise.name,
-            'muscle': ex.exercise.muscle,
-            'equipment': ex.exercise.equipment,
-            'rest': ex.restSeconds ?? _defaultRest,
-            'curSet': 0,
-            'sets': [
-              for (final set in ex.sets)
-                {
-                  'kg': set.kg.text.trim(),
-                  'reps': set.reps.text.trim(),
-                  'prev': set.previousLabel,
-                  'done': set.completed,
-                },
-            ],
+            'kg': set.kg.text.trim(),
+            'reps': set.reps.text.trim(),
+            'prev': set.previousLabel,
+            'done': set.completed,
           },
       ],
     };

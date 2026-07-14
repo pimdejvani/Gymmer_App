@@ -172,8 +172,25 @@ struct Session: Codable {
 struct CatalogItem: Codable {
   var name: String; var muscle: String; var equipment: String
 }
+
 struct RoutineItem: Codable {
-  var name: String; var group: String
+  var name: String = ""
+  var group: String = ""
+  var exercises: [WExercise] = []
+  init(from d: Decoder) throws {
+    let c = try d.container(keyedBy: CodingKeys.self)
+    name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? ""
+    group = (try? c.decodeIfPresent(String.self, forKey: .group)) ?? ""
+    exercises = (try? c.decodeIfPresent([WExercise].self, forKey: .exercises)) ?? []
+  }
+}
+
+struct RoutinesFile: Codable {
+  var routines: [RoutineItem] = []
+  init(from d: Decoder) throws {
+    let c = try d.container(keyedBy: CodingKeys.self)
+    routines = (try? c.decodeIfPresent([RoutineItem].self, forKey: .routines)) ?? []
+  }
 }
 
 // MARK: - Store
@@ -219,11 +236,8 @@ enum WStore {
   static func routines() -> [RoutineItem] {
     guard let u = url("routines.json"),
           let data = try? Data(contentsOf: u),
-          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let raw = obj["routines"] as? [[String: Any]] else { return [] }
-    return raw.map {
-      RoutineItem(name: $0["name"] as? String ?? "", group: $0["group"] as? String ?? "")
-    }
+          let file = try? JSONDecoder().decode(RoutinesFile.self, from: data) else { return [] }
+    return file.routines
   }
 }
 
@@ -285,8 +299,10 @@ struct StartRoutineIntent: AppIntent {
     s.routineName = name
     s.sessionName = name
     s.startedAt = ISO8601DateFormatter().string(from: Date())
-    s.exercises = []
-    s.ui.page = "add"
+    // Pull the routine's full exercise + set list (written by the app).
+    s.exercises = WStore.routines().first(where: { $0.name == name })?.exercises ?? []
+    s.curEx = 0
+    s.ui.page = s.exercises.isEmpty ? "add" : "log"
     WStore.save(s)
     return .result()
   }
@@ -404,9 +420,19 @@ struct CompleteSetIntent: AppIntent {
     var ex = s.exercises[ei]
     let si = min(max(ex.curSet, 0), ex.sets.count - 1)
     ex.sets[si].done = true
-    if si + 1 < ex.sets.count { ex.curSet = si + 1 } // move to next set to log
+    if si + 1 < ex.sets.count {
+      ex.curSet = si + 1 // more sets in this exercise → log the next one
+    }
     s.exercises[ei] = ex
-    // Kick off the rest timer (purely a countdown overlay on the Log page).
+    // Exercise finished → auto-advance to the next exercise with unlogged sets.
+    if !ex.sets.contains(where: { !$0.done }),
+       let nextIdx = nextIncompleteExercise(s, after: ei) {
+      s.curEx = nextIdx
+      var nx = s.exercises[nextIdx]
+      if let firstUnlogged = nx.sets.firstIndex(where: { !$0.done }) { nx.curSet = firstUnlogged }
+      s.exercises[nextIdx] = nx
+    }
+    // Kick off the rest timer (a countdown overlay on the Log page).
     s.ui.restDur = ex.rest
     s.ui.restEndsAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(Double(ex.rest)))
     WStore.save(s)
@@ -522,11 +548,38 @@ struct DiscardIntent: AppIntent {
   }
 }
 
+/// When the current rest ends (nil if no rest scheduled).
+func restEndDate(_ s: Session) -> Date? {
+  guard let iso = s.ui.restEndsAt else { return nil }
+  return ISO8601DateFormatter().date(from: iso)
+}
+
 /// Seconds left on the rest timer (0 if none / elapsed).
 func restRemaining(_ s: Session) -> Int {
-  guard let iso = s.ui.restEndsAt,
-        let end = ISO8601DateFormatter().date(from: iso) else { return 0 }
+  guard let end = restEndDate(s) else { return 0 }
   return max(0, Int(end.timeIntervalSinceNow.rounded()))
+}
+
+/// True when every set of every exercise is logged — the session can finish.
+func sessionComplete(_ s: Session) -> Bool {
+  guard !s.exercises.isEmpty else { return false }
+  for ex in s.exercises {
+    if ex.sets.isEmpty { return false }
+    for set in ex.sets where !set.done { return false }
+  }
+  return true
+}
+
+/// Index of the next exercise (searching cyclically after [i]) that still has an
+/// unlogged set, or nil when every exercise is complete.
+func nextIncompleteExercise(_ s: Session, after i: Int) -> Int? {
+  let n = s.exercises.count
+  guard n > 0 else { return nil }
+  for step in 1...n {
+    let idx = (i + step) % n
+    if s.exercises[idx].sets.contains(where: { !$0.done }) { return idx }
+  }
+  return nil
 }
 
 // MARK: - Timeline
@@ -549,17 +602,15 @@ struct Provider: TimelineProvider {
     let s = WStore.loadSession()
     let cat = WStore.catalog()
     let rts = WStore.routines()
-    let remaining = restRemaining(s)
-    if s.active && s.ui.page == "log" && remaining > 0 {
-      // Tick the rest countdown once per second.
-      var entries: [GymmerEntry] = []
-      let now = Date()
-      for offset in 0...min(remaining, 300) {
-        entries.append(GymmerEntry(
-          date: now.addingTimeInterval(Double(offset)),
-          session: s, catalog: cat, routines: rts
-        ))
-      }
+    // The rest countdown animates via SwiftUI Text(timerInterval:) — no need to
+    // pre-generate per-second entries (that hit the widget refresh budget and
+    // froze the timer on the 2nd rest). We only need one entry now, plus one at
+    // rest-end so the widget flips back to the Log page when the timer expires.
+    if s.active && s.ui.page == "log", let end = restEndDate(s), end.timeIntervalSinceNow > 0 {
+      let entries = [
+        GymmerEntry(date: Date(), session: s, catalog: cat, routines: rts),
+        GymmerEntry(date: end, session: s, catalog: cat, routines: rts),
+      ]
       completion(Timeline(entries: entries, policy: .atEnd))
     } else {
       completion(Timeline(entries: [GymmerEntry(date: Date(), session: s, catalog: cat, routines: rts)], policy: .never))
@@ -710,13 +761,26 @@ private struct LogView: View {
               up: AdjustIntent(field: "rep", delta: 1))
 
       HStack(spacing: 6) {
-        Button(intent: CompleteSetIntent()) {
-          Image(systemName: "checkmark")
-            .font(.system(size: 15, weight: .heavy)).foregroundColor(.black)
+        if sessionComplete(s) {
+          Button(intent: FinishSessionIntent()) {
+            HStack(spacing: 5) {
+              Image(systemName: "flag.checkered")
+              Text("จบ session").font(.system(size: 13, weight: .bold))
+            }
+            .foregroundColor(.black)
             .frame(maxWidth: .infinity).padding(.vertical, 7)
             .background(T.accent)
             .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-        }.buttonStyle(.plain)
+          }.buttonStyle(.plain)
+        } else {
+          Button(intent: CompleteSetIntent()) {
+            Image(systemName: "checkmark")
+              .font(.system(size: 15, weight: .heavy)).foregroundColor(.black)
+              .frame(maxWidth: .infinity).padding(.vertical, 7)
+              .background(T.accent)
+              .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+          }.buttonStyle(.plain)
+        }
         Button(intent: NextExerciseIntent()) { chevron("chevron.right") }.buttonStyle(.plain)
         Button(intent: NavIntent("manage")) { chevron("ellipsis") }.buttonStyle(.plain)
       }
@@ -751,11 +815,17 @@ private struct LogView: View {
 private struct RestView: View {
   var entry: GymmerEntry
   var body: some View {
-    let remaining = restRemaining(entry.session)
+    let s = entry.session
+    // Clamp so the range is always valid even if the end is (just) in the past.
+    let end = max(restEndDate(s) ?? Date(), Date().addingTimeInterval(1))
+    let allDone = sessionComplete(s)
     VStack(alignment: .leading, spacing: 9) {
-      Header(title: "พัก", subtitle: "หลังบันทึกเซ็ต")
-      Text(String(format: "%d:%02d", remaining / 60, remaining % 60))
+      Header(title: "พัก", subtitle: allDone ? "ครบทุกท่าแล้ว" : "หลังบันทึกเซ็ต")
+      // Self-ticking countdown — reliable across repeated rests (no timeline budget).
+      Text(timerInterval: Date()...end, countsDown: true)
         .font(.system(size: 40, weight: .heavy, design: .rounded))
+        .monospacedDigit()
+        .multilineTextAlignment(.center)
         .foregroundColor(T.accent)
         .frame(maxWidth: .infinity, alignment: .center)
       HStack(spacing: 6) {
@@ -763,8 +833,13 @@ private struct RestView: View {
           .buttonStyle(.plain)
         Button(intent: RestAdjustIntent(15)) { Pill(label: "+15", bg: T.surfaceHigh, fg: T.textPrimary) }
           .buttonStyle(.plain)
-        Button(intent: SkipRestIntent()) { Pill(label: "ข้าม", bg: T.accent, fg: .black) }
-          .buttonStyle(.plain)
+        if allDone {
+          Button(intent: FinishSessionIntent()) { Pill(label: "จบ session", bg: T.accent, fg: .black) }
+            .buttonStyle(.plain)
+        } else {
+          Button(intent: SkipRestIntent()) { Pill(label: "ข้าม", bg: T.accent, fg: .black) }
+            .buttonStyle(.plain)
+        }
       }
       Spacer(minLength: 0)
     }

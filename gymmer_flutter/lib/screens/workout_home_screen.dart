@@ -34,7 +34,7 @@ class GymmerHome extends StatefulWidget {
   State<GymmerHome> createState() => _GymmerHomeState();
 }
 
-class _GymmerHomeState extends State<GymmerHome> {
+class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
   List<Exercise> exercises = [];
   WorkoutHistory history = WorkoutHistory([]);
   List<RoutineGroup> groups = [];
@@ -43,6 +43,10 @@ class _GymmerHomeState extends State<GymmerHome> {
   bool loading = true;
   Object? loadError;
   ActiveWorkout? activeWorkout;
+
+  /// Highest `rev` we've written to / read from the widget's session.json, so
+  /// resume-reconciliation only rebuilds when the WIDGET wrote something newer.
+  int _lastWidgetRev = 0;
 
   int _tabIndex = 0;
   final Set<String> _collapsedGroups = {};
@@ -54,11 +58,13 @@ class _GymmerHomeState extends State<GymmerHome> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_loadStore());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _stopAutoScroll();
     _homeScrollController.dispose();
     activeWorkout?.dispose();
@@ -66,6 +72,13 @@ class _GymmerHomeState extends State<GymmerHome> {
       unawaited(store?.close());
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_reconcileWidgetSession());
+    }
   }
 
   Future<void> _loadStore() async {
@@ -86,6 +99,8 @@ class _GymmerHomeState extends State<GymmerHome> {
         loading = false;
       });
       unawaited(WidgetBridge.writeCatalog(state.exercises));
+      unawaited(WidgetBridge.writeRoutines(state.groups));
+      _pushSessionToWidget(state.activeWorkout);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -106,12 +121,68 @@ class _GymmerHomeState extends State<GymmerHome> {
       history = state.history;
       activeWorkout = state.activeWorkout;
     });
+    unawaited(WidgetBridge.writeCatalog(state.exercises));
+    unawaited(WidgetBridge.writeRoutines(state.groups));
+    _pushSessionToWidget(state.activeWorkout);
   }
 
   void _saveActiveWorkoutDraft(ActiveWorkout workout) {
     final currentStore = store;
     if (currentStore == null) return;
     unawaited(currentStore.saveActiveWorkout(workout));
+    _pushSessionToWidget(workout);
+  }
+
+  /// Writes [workout] (or an inactive marker) to the widget's session.json and
+  /// remembers the `rev` so our own writes don't trigger a resume-rebuild.
+  void _pushSessionToWidget(ActiveWorkout? workout) {
+    final snapshot = WidgetBridge.encodeSession(workout);
+    _lastWidgetRev = snapshot['rev'] as int? ?? _lastWidgetRev;
+    unawaited(WidgetBridge.writeSession(workout));
+  }
+
+  /// On resume, pull back session.json. If the WIDGET wrote a newer revision
+  /// (its App Intents mutated the session while we were backgrounded), rebuild
+  /// the in-app workout from it and persist to SQLite so both stay in sync.
+  Future<void> _reconcileWidgetSession() async {
+    final currentStore = store;
+    if (currentStore == null) return;
+    final session = await WidgetBridge.readSession();
+    if (session == null) return;
+    if (session['by'] != 'widget') return;
+    final rev = session['rev'];
+    if (rev is! int || rev <= _lastWidgetRev) return;
+    _lastWidgetRev = rev;
+
+    if (session['active'] != true) {
+      // Widget finished or discarded the session while we were away.
+      if (session['outcome'] == 'finish') {
+        final finished = WidgetBridge.buildWorkoutFromSession(
+          session,
+          exercises,
+        );
+        if (finished != null) {
+          await currentStore.finishWorkout(finished);
+          finished.dispose();
+        }
+      }
+      await currentStore.clearActiveWorkout();
+      if (!mounted) return;
+      activeWorkout?.dispose();
+      setState(() => activeWorkout = null);
+      return;
+    }
+
+    final rebuilt = WidgetBridge.sessionToWorkout(session, exercises);
+    if (rebuilt == null) return;
+    await currentStore.saveActiveWorkout(rebuilt);
+    if (!mounted) {
+      rebuilt.dispose();
+      return;
+    }
+    final previous = activeWorkout;
+    setState(() => activeWorkout = rebuilt);
+    previous?.dispose();
   }
 
   Future<void> startEmptyWorkout() async {
@@ -284,6 +355,7 @@ class _GymmerHomeState extends State<GymmerHome> {
       await store?.clearActiveWorkout();
       activeWorkout?.dispose();
       setState(() => activeWorkout = null);
+      _pushSessionToWidget(null);
       await _reloadFromStore();
       if (finishedRecords > 0 && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

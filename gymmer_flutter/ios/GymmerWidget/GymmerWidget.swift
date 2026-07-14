@@ -2,23 +2,52 @@ import WidgetKit
 import SwiftUI
 import AppIntents
 
-// -----------------------------------------------------------------------------
-// Step-A widget: validate the last two primitives before building the full UI:
-//   1. Flutter -> shared container data (renders the real exercise-catalog count
-//      the app writes to catalog.json), and
-//   2. App Intent interactivity (a +1 button that mutates session.json in the
-//      widget process and re-renders — proves buttons work on the SideStore build).
-// The app-group id is resolved at runtime (SideStore rewrites it), never hard-coded.
-// -----------------------------------------------------------------------------
+// =============================================================================
+// GYMMER — Exercise Session Widget (6 pages, fully interactive via App Intents)
+//
+// Single source of truth: session.json in the App Group container, read/written
+// by BOTH this widget and the Flutter app (last-writer-wins, reconciled by the
+// app on resume). The app additionally writes catalog.json (exercise picker) and
+// routines.json (Start page). The app-group id is resolved at runtime because
+// SideStore rewrites it — never hard-coded. See docs/widget/WIDGET.md.
+//
+// Deployment target is iOS 17, so interactive Button(intent:) is always usable.
+// =============================================================================
 
-// MARK: - Shared App Group
+// MARK: - Theme
+
+private extension Color {
+  init(hex: UInt32) {
+    self.init(
+      .sRGB,
+      red: Double((hex >> 16) & 0xFF) / 255,
+      green: Double((hex >> 8) & 0xFF) / 255,
+      blue: Double(hex & 0xFF) / 255,
+      opacity: 1
+    )
+  }
+}
+
+private enum T {
+  static let bg = Color(hex: 0x000000)
+  static let surface = Color(hex: 0x121214)
+  static let surfaceHigh = Color(hex: 0x1C1C1F)
+  static let hairline = Color(hex: 0x242428)
+  static let textPrimary = Color(hex: 0xF5F5F7)
+  static let textSecondary = Color(hex: 0x9E9EA7)
+  static let textTertiary = Color(hex: 0x5E5E66)
+  static let accent = Color(hex: 0x7DFF8A)
+  static let danger = Color(hex: 0xFF5A5A)
+}
+
+// MARK: - App Group
 
 enum AppGroup {
-  static let resolvedID: String = firstProvisionedGroup() ?? "group.com.gymmer.gymmerFlutter"
-
   static var containerURL: URL? {
     FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: resolvedID)
   }
+
+  static let resolvedID: String = firstProvisionedGroup() ?? "group.com.gymmer.gymmerFlutter"
 
   private static func firstProvisionedGroup() -> String? {
     guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
@@ -35,126 +64,917 @@ enum AppGroup {
   }
 }
 
-// MARK: - Shared state
+// MARK: - Shared models (lenient decoding: the app may write partial objects)
 
-struct SessionState: Codable {
-  var counter: Int = 0
+struct WSet: Codable {
+  var kg: String = ""
+  var reps: String = ""
+  var prev: String? = nil
+  var done: Bool = false
+
+  init(kg: String = "", reps: String = "", prev: String? = nil, done: Bool = false) {
+    self.kg = kg; self.reps = reps; self.prev = prev; self.done = done
+  }
+  init(from d: Decoder) throws {
+    let c = try d.container(keyedBy: CodingKeys.self)
+    kg = (try? c.decodeIfPresent(String.self, forKey: .kg)) ?? ""
+    reps = (try? c.decodeIfPresent(String.self, forKey: .reps)) ?? ""
+    prev = (try? c.decodeIfPresent(String.self, forKey: .prev)) ?? nil
+    done = (try? c.decodeIfPresent(Bool.self, forKey: .done)) ?? false
+  }
 }
 
-enum WidgetStore {
-  static func catalogCount() -> Int {
-    guard let dir = AppGroup.containerURL,
-          let data = try? Data(contentsOf: dir.appendingPathComponent("catalog.json")),
-          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let exercises = obj["exercises"] as? [[String: Any]] else { return -1 }
-    return exercises.count
+struct WExercise: Codable {
+  var name: String = ""
+  var muscle: String = ""
+  var equipment: String = ""
+  var rest: Int = 90
+  var curSet: Int = 0
+  var sets: [WSet] = [WSet()]
+
+  init(name: String, muscle: String, equipment: String) {
+    self.name = name; self.muscle = muscle; self.equipment = equipment
+  }
+  init(from d: Decoder) throws {
+    let c = try d.container(keyedBy: CodingKeys.self)
+    name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? ""
+    muscle = (try? c.decodeIfPresent(String.self, forKey: .muscle)) ?? ""
+    equipment = (try? c.decodeIfPresent(String.self, forKey: .equipment)) ?? ""
+    rest = (try? c.decodeIfPresent(Int.self, forKey: .rest)) ?? 90
+    curSet = (try? c.decodeIfPresent(Int.self, forKey: .curSet)) ?? 0
+    let s = (try? c.decodeIfPresent([WSet].self, forKey: .sets)) ?? nil
+    sets = (s?.isEmpty == false) ? s! : [WSet()]
+  }
+}
+
+struct WUI: Codable {
+  var page: String = "log"
+  var listPage: Int = 0
+  var filterPage: Int = 0
+  var muscleFilter: String? = nil
+  var equipFilter: String? = nil
+  var routinePage: Int = 0
+  var restEndsAt: String? = nil
+  var restDur: Int = 90
+
+  init() {}
+  init(from d: Decoder) throws {
+    let c = try d.container(keyedBy: CodingKeys.self)
+    page = (try? c.decodeIfPresent(String.self, forKey: .page)) ?? "log"
+    listPage = (try? c.decodeIfPresent(Int.self, forKey: .listPage)) ?? 0
+    filterPage = (try? c.decodeIfPresent(Int.self, forKey: .filterPage)) ?? 0
+    muscleFilter = (try? c.decodeIfPresent(String.self, forKey: .muscleFilter)) ?? nil
+    equipFilter = (try? c.decodeIfPresent(String.self, forKey: .equipFilter)) ?? nil
+    routinePage = (try? c.decodeIfPresent(Int.self, forKey: .routinePage)) ?? 0
+    restEndsAt = (try? c.decodeIfPresent(String.self, forKey: .restEndsAt)) ?? nil
+    restDur = (try? c.decodeIfPresent(Int.self, forKey: .restDur)) ?? 90
+  }
+}
+
+struct Session: Codable {
+  var v: Int = 1
+  var rev: Int = 0
+  var by: String = "widget"
+  var active: Bool = false
+  var outcome: String? = nil
+  var sessionName: String? = nil
+  var source: String? = nil
+  var routineName: String? = nil
+  var routineGroupName: String? = nil
+  var startedAt: String? = nil
+  var curEx: Int = 0
+  var ui: WUI = WUI()
+  var exercises: [WExercise] = []
+
+  init() {}
+  init(from d: Decoder) throws {
+    let c = try d.container(keyedBy: CodingKeys.self)
+    v = (try? c.decodeIfPresent(Int.self, forKey: .v)) ?? 1
+    rev = (try? c.decodeIfPresent(Int.self, forKey: .rev)) ?? 0
+    by = (try? c.decodeIfPresent(String.self, forKey: .by)) ?? "widget"
+    active = (try? c.decodeIfPresent(Bool.self, forKey: .active)) ?? false
+    outcome = (try? c.decodeIfPresent(String.self, forKey: .outcome)) ?? nil
+    sessionName = (try? c.decodeIfPresent(String.self, forKey: .sessionName)) ?? nil
+    source = (try? c.decodeIfPresent(String.self, forKey: .source)) ?? nil
+    routineName = (try? c.decodeIfPresent(String.self, forKey: .routineName)) ?? nil
+    routineGroupName = (try? c.decodeIfPresent(String.self, forKey: .routineGroupName)) ?? nil
+    startedAt = (try? c.decodeIfPresent(String.self, forKey: .startedAt)) ?? nil
+    curEx = (try? c.decodeIfPresent(Int.self, forKey: .curEx)) ?? 0
+    ui = (try? c.decodeIfPresent(WUI.self, forKey: .ui)) ?? WUI()
+    exercises = (try? c.decodeIfPresent([WExercise].self, forKey: .exercises)) ?? []
   }
 
-  static func loadSession() -> SessionState {
-    guard let dir = AppGroup.containerURL,
-          let data = try? Data(contentsOf: dir.appendingPathComponent("session.json")),
-          let session = try? JSONDecoder().decode(SessionState.self, from: data) else {
-      return SessionState()
+  // Clamped current exercise / set accessors.
+  var safeExIndex: Int { exercises.isEmpty ? 0 : min(max(curEx, 0), exercises.count - 1) }
+  var currentExercise: WExercise? { exercises.isEmpty ? nil : exercises[safeExIndex] }
+}
+
+struct CatalogItem: Codable {
+  var name: String; var muscle: String; var equipment: String
+}
+struct RoutineItem: Codable {
+  var name: String; var group: String
+}
+
+// MARK: - Store
+
+enum WStore {
+  private static func url(_ file: String) -> URL? {
+    AppGroup.containerURL?.appendingPathComponent(file)
+  }
+
+  static func loadSession() -> Session {
+    guard let u = url("session.json"),
+          let data = try? Data(contentsOf: u),
+          let s = try? JSONDecoder().decode(Session.self, from: data) else {
+      return Session()
     }
-    return session
+    return s
   }
 
-  static func saveSession(_ session: SessionState) {
-    guard let dir = AppGroup.containerURL,
-          let data = try? JSONEncoder().encode(session) else { return }
-    try? data.write(to: dir.appendingPathComponent("session.json"), options: .atomic)
+  /// Persists a widget mutation: stamps `by:"widget"` + a fresh monotonic rev
+  /// (microseconds, matching the Flutter scale) so the app reconciles on resume.
+  static func save(_ session: Session) {
+    var s = session
+    s.by = "widget"
+    s.rev = Int(Date().timeIntervalSince1970 * 1_000_000)
+    guard let u = url("session.json"), let data = try? JSONEncoder().encode(s) else { return }
+    try? data.write(to: u, options: .atomic)
+  }
+
+  static func catalog() -> [CatalogItem] {
+    guard let u = url("catalog.json"),
+          let data = try? Data(contentsOf: u),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let raw = obj["exercises"] as? [[String: Any]] else { return [] }
+    return raw.map {
+      CatalogItem(
+        name: $0["name"] as? String ?? "",
+        muscle: $0["muscle"] as? String ?? "",
+        equipment: $0["equipment"] as? String ?? ""
+      )
+    }
+  }
+
+  static func routines() -> [RoutineItem] {
+    guard let u = url("routines.json"),
+          let data = try? Data(contentsOf: u),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let raw = obj["routines"] as? [[String: Any]] else { return [] }
+    return raw.map {
+      RoutineItem(name: $0["name"] as? String ?? "", group: $0["group"] as? String ?? "")
+    }
   }
 }
 
-// MARK: - App Intent (interactivity)
+// MARK: - Number helpers
 
-@available(iOS 17.0, *)
-struct BumpCounterIntent: AppIntent {
-  static var title: LocalizedStringResource = "Bump counter"
+enum Num {
+  static func fmtKg(_ v: Double) -> String {
+    let clamped = max(0, v)
+    if clamped == clamped.rounded() { return String(Int(clamped)) }
+    return String(format: "%.1f", clamped)
+  }
+  static func kg(_ s: String) -> Double { Double(s.trimmingCharacters(in: .whitespaces)) ?? 0 }
+  static func reps(_ s: String) -> Int { Int(s.trimmingCharacters(in: .whitespaces)) ?? 0 }
+}
 
+// MARK: - App Intents
+
+// -- Navigation -------------------------------------------------------------
+
+struct NavIntent: AppIntent {
+  static var title: LocalizedStringResource = "Navigate"
+  @Parameter(title: "page") var page: String
+  init() {}
+  init(_ page: String) { self.page = page }
   func perform() async throws -> some IntentResult {
-    var session = WidgetStore.loadSession()
-    session.counter += 1
-    WidgetStore.saveSession(session)
+    var s = WStore.loadSession()
+    s.ui.page = page
+    WStore.save(s)
     return .result()
   }
+}
+
+// -- Start page -------------------------------------------------------------
+
+struct StartEmptyIntent: AppIntent {
+  static var title: LocalizedStringResource = "Start empty session"
+  func perform() async throws -> some IntentResult {
+    var s = Session()
+    s.active = true
+    s.source = "No Routine"
+    s.sessionName = "No Routine"
+    s.startedAt = ISO8601DateFormatter().string(from: Date())
+    s.exercises = []
+    s.ui.page = "add"
+    WStore.save(s)
+    return .result()
+  }
+}
+
+struct StartRoutineIntent: AppIntent {
+  static var title: LocalizedStringResource = "Start routine"
+  @Parameter(title: "name") var name: String
+  init() {}
+  init(_ name: String) { self.name = name }
+  func perform() async throws -> some IntentResult {
+    var s = Session()
+    s.active = true
+    s.source = name
+    s.routineName = name
+    s.sessionName = name
+    s.startedAt = ISO8601DateFormatter().string(from: Date())
+    s.exercises = []
+    s.ui.page = "add"
+    WStore.save(s)
+    return .result()
+  }
+}
+
+struct RoutinePageIntent: AppIntent {
+  static var title: LocalizedStringResource = "Page routines"
+  @Parameter(title: "delta") var delta: Int
+  init() {}
+  init(_ delta: Int) { self.delta = delta }
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    s.ui.routinePage = max(0, s.ui.routinePage + delta)
+    WStore.save(s)
+    return .result()
+  }
+}
+
+// -- Add / filter -----------------------------------------------------------
+
+struct AddExerciseIntent: AppIntent {
+  static var title: LocalizedStringResource = "Add exercise"
+  @Parameter(title: "name") var name: String
+  init() {}
+  init(_ name: String) { self.name = name }
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    guard !name.isEmpty else { return .result() }
+    if let existing = s.exercises.firstIndex(where: { $0.name == name }) {
+      s.exercises.remove(at: existing) // toggle off
+    } else if let item = WStore.catalog().first(where: { $0.name == name }) {
+      s.exercises.append(WExercise(name: item.name, muscle: item.muscle, equipment: item.equipment))
+    }
+    WStore.save(s)
+    return .result()
+  }
+}
+
+struct ListPageIntent: AppIntent {
+  static var title: LocalizedStringResource = "Page exercise list"
+  @Parameter(title: "delta") var delta: Int
+  init() {}
+  init(_ delta: Int) { self.delta = delta }
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    s.ui.listPage = max(0, s.ui.listPage + delta)
+    WStore.save(s)
+    return .result()
+  }
+}
+
+struct FilterPageIntent: AppIntent {
+  static var title: LocalizedStringResource = "Page filter chips"
+  @Parameter(title: "delta") var delta: Int
+  init() {}
+  init(_ delta: Int) { self.delta = delta }
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    s.ui.filterPage = max(0, s.ui.filterPage + delta)
+    WStore.save(s)
+    return .result()
+  }
+}
+
+struct SelectFilterIntent: AppIntent {
+  static var title: LocalizedStringResource = "Select filter"
+  @Parameter(title: "kind") var kind: String   // "muscle" | "equip"
+  @Parameter(title: "value") var value: String // "" clears
+  init() {}
+  init(kind: String, value: String) { self.kind = kind; self.value = value }
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    let v: String? = value.isEmpty ? nil : value
+    if kind == "muscle" { s.ui.muscleFilter = v } else { s.ui.equipFilter = v }
+    s.ui.listPage = 0
+    s.ui.page = "add"
+    WStore.save(s)
+    return .result()
+  }
+}
+
+// -- Log page ---------------------------------------------------------------
+
+struct AdjustIntent: AppIntent {
+  static var title: LocalizedStringResource = "Adjust value"
+  @Parameter(title: "field") var field: String // "kg" | "rep"
+  @Parameter(title: "delta") var delta: Double
+  init() {}
+  init(field: String, delta: Double) { self.field = field; self.delta = delta }
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    let ei = s.safeExIndex
+    guard !s.exercises.isEmpty else { return .result() }
+    var ex = s.exercises[ei]
+    let si = min(max(ex.curSet, 0), ex.sets.count - 1)
+    if field == "kg" {
+      let v = Num.kg(ex.sets[si].kg) + delta
+      ex.sets[si].kg = Num.fmtKg(v)
+    } else {
+      let v = max(0, Num.reps(ex.sets[si].reps) + Int(delta))
+      ex.sets[si].reps = String(v)
+    }
+    s.exercises[ei] = ex
+    WStore.save(s)
+    return .result()
+  }
+}
+
+struct CompleteSetIntent: AppIntent {
+  static var title: LocalizedStringResource = "Complete set"
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    let ei = s.safeExIndex
+    guard !s.exercises.isEmpty else { return .result() }
+    var ex = s.exercises[ei]
+    let si = min(max(ex.curSet, 0), ex.sets.count - 1)
+    ex.sets[si].done = true
+    if si + 1 < ex.sets.count { ex.curSet = si + 1 } // move to next set to log
+    s.exercises[ei] = ex
+    // Kick off the rest timer (purely a countdown overlay on the Log page).
+    s.ui.restDur = ex.rest
+    s.ui.restEndsAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(Double(ex.rest)))
+    WStore.save(s)
+    return .result()
+  }
+}
+
+struct NextExerciseIntent: AppIntent {
+  static var title: LocalizedStringResource = "Next exercise"
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    guard !s.exercises.isEmpty else { return .result() }
+    s.curEx = (s.safeExIndex + 1) % s.exercises.count
+    WStore.save(s)
+    return .result()
+  }
+}
+
+// -- Rest -------------------------------------------------------------------
+
+struct RestAdjustIntent: AppIntent {
+  static var title: LocalizedStringResource = "Adjust rest"
+  @Parameter(title: "delta") var delta: Int
+  init() {}
+  init(_ delta: Int) { self.delta = delta }
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    let base = restRemaining(s)
+    let newRemaining = max(0, base + delta)
+    s.ui.restEndsAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(Double(newRemaining)))
+    WStore.save(s)
+    return .result()
+  }
+}
+
+struct SkipRestIntent: AppIntent {
+  static var title: LocalizedStringResource = "Skip rest"
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    s.ui.restEndsAt = nil // curSet was already advanced when the set completed
+    WStore.save(s)
+    return .result()
+  }
+}
+
+// -- Manage -----------------------------------------------------------------
+
+struct AddSetIntent: AppIntent {
+  static var title: LocalizedStringResource = "Add set"
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    let ei = s.safeExIndex
+    guard !s.exercises.isEmpty else { return .result() }
+    var ex = s.exercises[ei]
+    let last = ex.sets.last
+    ex.sets.append(WSet(kg: last?.kg ?? "", reps: last?.reps ?? "", prev: last?.prev))
+    s.exercises[ei] = ex
+    WStore.save(s)
+    return .result()
+  }
+}
+
+struct RemoveSetIntent: AppIntent {
+  static var title: LocalizedStringResource = "Remove set"
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    let ei = s.safeExIndex
+    guard !s.exercises.isEmpty else { return .result() }
+    var ex = s.exercises[ei]
+    if ex.sets.count > 1 {
+      ex.sets.removeLast()
+      ex.curSet = min(ex.curSet, ex.sets.count - 1)
+    }
+    s.exercises[ei] = ex
+    WStore.save(s)
+    return .result()
+  }
+}
+
+struct RemoveExerciseIntent: AppIntent {
+  static var title: LocalizedStringResource = "Remove exercise"
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    guard !s.exercises.isEmpty else { return .result() }
+    s.exercises.remove(at: s.safeExIndex)
+    if s.curEx >= s.exercises.count { s.curEx = max(0, s.exercises.count - 1) }
+    if s.exercises.isEmpty { s.ui.page = "add" }
+    WStore.save(s)
+    return .result()
+  }
+}
+
+struct FinishSessionIntent: AppIntent {
+  static var title: LocalizedStringResource = "Finish session"
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    s.active = false
+    s.outcome = "finish"
+    s.ui = WUI()
+    WStore.save(s)
+    return .result()
+  }
+}
+
+struct DiscardIntent: AppIntent {
+  static var title: LocalizedStringResource = "Discard session"
+  func perform() async throws -> some IntentResult {
+    var s = Session()
+    s.active = false
+    s.outcome = "discard"
+    WStore.save(s)
+    return .result()
+  }
+}
+
+/// Seconds left on the rest timer (0 if none / elapsed).
+func restRemaining(_ s: Session) -> Int {
+  guard let iso = s.ui.restEndsAt,
+        let end = ISO8601DateFormatter().date(from: iso) else { return 0 }
+  return max(0, Int(end.timeIntervalSinceNow.rounded()))
 }
 
 // MARK: - Timeline
 
 struct GymmerEntry: TimelineEntry {
   let date: Date
-  let catalogCount: Int
-  let counter: Int
+  let session: Session
+  let catalog: [CatalogItem]
+  let routines: [RoutineItem]
 }
 
 struct Provider: TimelineProvider {
   func placeholder(in context: Context) -> GymmerEntry {
-    GymmerEntry(date: Date(), catalogCount: 0, counter: 0)
+    GymmerEntry(date: Date(), session: Session(), catalog: [], routines: [])
   }
-
   func getSnapshot(in context: Context, completion: @escaping (GymmerEntry) -> Void) {
-    completion(readEntry())
+    completion(current())
   }
-
   func getTimeline(in context: Context, completion: @escaping (Timeline<GymmerEntry>) -> Void) {
-    completion(Timeline(entries: [readEntry()], policy: .never))
+    let s = WStore.loadSession()
+    let cat = WStore.catalog()
+    let rts = WStore.routines()
+    let remaining = restRemaining(s)
+    if s.active && s.ui.page == "log" && remaining > 0 {
+      // Tick the rest countdown once per second.
+      var entries: [GymmerEntry] = []
+      let now = Date()
+      for offset in 0...min(remaining, 300) {
+        entries.append(GymmerEntry(
+          date: now.addingTimeInterval(Double(offset)),
+          session: s, catalog: cat, routines: rts
+        ))
+      }
+      completion(Timeline(entries: entries, policy: .atEnd))
+    } else {
+      completion(Timeline(entries: [GymmerEntry(date: Date(), session: s, catalog: cat, routines: rts)], policy: .never))
+    }
   }
-
-  private func readEntry() -> GymmerEntry {
-    GymmerEntry(
-      date: Date(),
-      catalogCount: WidgetStore.catalogCount(),
-      counter: WidgetStore.loadSession().counter
-    )
+  private func current() -> GymmerEntry {
+    GymmerEntry(date: Date(), session: WStore.loadSession(), catalog: WStore.catalog(), routines: WStore.routines())
   }
 }
 
-// MARK: - View
+// MARK: - Reusable view pieces
 
-private let mint = Color(red: 0.49, green: 1.0, blue: 0.54) // #7DFF8A
-
-struct GymmerWidgetEntryView: View {
-  var entry: GymmerEntry
-
+private struct Pill: View {
+  var label: String
+  var bg: Color
+  var fg: Color
   var body: some View {
-    let content = VStack(alignment: .leading, spacing: 8) {
-      Text("GYMMER")
-        .font(.system(size: 15, weight: .heavy))
-        .foregroundColor(mint)
+    Text(label)
+      .font(.system(size: 13, weight: .bold))
+      .foregroundColor(fg)
+      .frame(maxWidth: .infinity)
+      .padding(.vertical, 7)
+      .background(bg)
+      .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+  }
+}
 
-      Text(entry.catalogCount >= 0
-           ? "catalog: \(entry.catalogCount) exercises"
-           : "catalog: not written yet")
-        .font(.system(size: 12))
-        .foregroundColor(Color(white: 0.96))
+private struct Header: View {
+  var title: String
+  var subtitle: String?
+  var body: some View {
+    HStack(alignment: .firstTextBaseline) {
+      Text(title)
+        .font(.system(size: 14, weight: .heavy))
+        .foregroundColor(T.accent)
+      if let subtitle {
+        Text(subtitle)
+          .font(.system(size: 11))
+          .foregroundColor(T.textSecondary)
+          .lineLimit(1)
+      }
+      Spacer(minLength: 0)
+    }
+  }
+}
 
-      HStack(spacing: 10) {
-        Text("count: \(entry.counter)")
-          .font(.system(size: 13, weight: .semibold, design: .monospaced))
-          .foregroundColor(Color(white: 0.96))
+// MARK: - Pages
 
-        if #available(iOS 17.0, *) {
-          Button(intent: BumpCounterIntent()) {
-            Text("+1")
-              .font(.system(size: 13, weight: .bold))
-              .foregroundColor(.black)
-              .padding(.horizontal, 14)
-              .padding(.vertical, 6)
-              .background(mint)
-              .clipShape(Capsule())
+private struct StartView: View {
+  var entry: GymmerEntry
+  private let perPage = 3
+  var body: some View {
+    let routines = entry.routines
+    let page = entry.session.ui.routinePage
+    let start = page * perPage
+    let slice = Array(routines.dropFirst(start).prefix(perPage))
+    let hasMore = routines.count > start + perPage
+
+    VStack(alignment: .leading, spacing: 9) {
+      Header(title: "GYMMER", subtitle: "New session")
+      Button(intent: StartEmptyIntent()) {
+        Pill(label: "START · No Routine", bg: T.accent, fg: .black)
+      }.buttonStyle(.plain)
+
+      if routines.isEmpty {
+        Text("No routines yet — add them in the app")
+          .font(.system(size: 11)).foregroundColor(T.textTertiary)
+      } else {
+        HStack(spacing: 6) {
+          ForEach(Array(slice.enumerated()), id: \.offset) { _, r in
+            Button(intent: StartRoutineIntent(r.name)) {
+              VStack(spacing: 1) {
+                Text(r.name).font(.system(size: 12, weight: .semibold))
+                  .foregroundColor(T.textPrimary).lineLimit(1)
+                Text(r.group).font(.system(size: 9))
+                  .foregroundColor(T.textTertiary).lineLimit(1)
+              }
+              .frame(maxWidth: .infinity).padding(.vertical, 6)
+              .background(T.surfaceHigh)
+              .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            }.buttonStyle(.plain)
           }
-          .buttonStyle(.plain)
+          if page > 0 {
+            Button(intent: RoutinePageIntent(-1)) { chevron("chevron.left") }.buttonStyle(.plain)
+          }
+          if hasMore {
+            Button(intent: RoutinePageIntent(1)) { chevron("chevron.right") }.buttonStyle(.plain)
+          }
         }
       }
       Spacer(minLength: 0)
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+  }
+}
 
-    if #available(iOS 17.0, *) {
-      content.padding(14).containerBackground(.black, for: .widget)
+private func chevron(_ name: String) -> some View {
+  Image(systemName: name)
+    .font(.system(size: 12, weight: .bold))
+    .foregroundColor(T.textPrimary)
+    .frame(width: 30, height: 30)
+    .background(T.surfaceHigh)
+    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+}
+
+private struct LogView: View {
+  var entry: GymmerEntry
+  var body: some View {
+    let s = entry.session
+    if s.exercises.isEmpty {
+      emptyState
+    } else if restRemaining(s) > 0 {
+      RestView(entry: entry)
     } else {
-      content.padding(14).background(Color.black)
+      logBody(s)
+    }
+  }
+
+  private var emptyState: some View {
+    VStack(alignment: .leading, spacing: 9) {
+      Header(title: "GYMMER", subtitle: "No exercises")
+      Button(intent: NavIntent("add")) { Pill(label: "เพิ่มท่า", bg: T.accent, fg: .black) }
+        .buttonStyle(.plain)
+      Spacer(minLength: 0)
+    }
+  }
+
+  private func logBody(_ s: Session) -> some View {
+    let ei = s.safeExIndex
+    let ex = s.exercises[ei]
+    let si = min(max(ex.curSet, 0), ex.sets.count - 1)
+    let set = ex.sets[si]
+    return VStack(alignment: .leading, spacing: 7) {
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        Text(ex.name).font(.system(size: 14, weight: .bold))
+          .foregroundColor(T.textPrimary).lineLimit(1)
+        Text("ท่า \(ei + 1)/\(s.exercises.count) · เซ็ต \(si + 1)/\(ex.sets.count)")
+          .font(.system(size: 10)).foregroundColor(T.textSecondary)
+        Spacer(minLength: 0)
+      }
+      Text(set.prev.map { "ครั้งก่อน \($0)" } ?? "ไม่มีข้อมูลก่อนหน้า")
+        .font(.system(size: 10)).foregroundColor(T.textTertiary).lineLimit(1)
+
+      stepper(label: "KG", value: set.kg.isEmpty ? "0" : set.kg,
+              down: AdjustIntent(field: "kg", delta: -2.5),
+              up: AdjustIntent(field: "kg", delta: 2.5))
+      stepper(label: "REP", value: set.reps.isEmpty ? "0" : set.reps,
+              down: AdjustIntent(field: "rep", delta: -1),
+              up: AdjustIntent(field: "rep", delta: 1))
+
+      HStack(spacing: 6) {
+        Button(intent: CompleteSetIntent()) {
+          Image(systemName: "checkmark")
+            .font(.system(size: 15, weight: .heavy)).foregroundColor(.black)
+            .frame(maxWidth: .infinity).padding(.vertical, 7)
+            .background(T.accent)
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        }.buttonStyle(.plain)
+        Button(intent: NextExerciseIntent()) { chevron("chevron.right") }.buttonStyle(.plain)
+        Button(intent: NavIntent("manage")) { chevron("ellipsis") }.buttonStyle(.plain)
+      }
+      Spacer(minLength: 0)
+    }
+  }
+
+  private func stepper(label: String, value: String, down: some AppIntent, up: some AppIntent) -> some View {
+    HStack(spacing: 6) {
+      Button(intent: down) { stepBtn("minus") }.buttonStyle(.plain)
+      VStack(spacing: 0) {
+        Text(label).font(.system(size: 9, weight: .semibold)).foregroundColor(T.textTertiary)
+        Text(value).font(.system(size: 17, weight: .heavy, design: .rounded))
+          .foregroundColor(T.textPrimary)
+      }
+      .frame(maxWidth: .infinity).padding(.vertical, 3)
+      .background(T.surface)
+      .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+      Button(intent: up) { stepBtn("plus") }.buttonStyle(.plain)
+    }
+  }
+
+  private func stepBtn(_ icon: String) -> some View {
+    Image(systemName: icon)
+      .font(.system(size: 14, weight: .bold)).foregroundColor(T.textPrimary)
+      .frame(width: 40, height: 40)
+      .background(T.surfaceHigh)
+      .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+  }
+}
+
+private struct RestView: View {
+  var entry: GymmerEntry
+  var body: some View {
+    let remaining = restRemaining(entry.session)
+    VStack(alignment: .leading, spacing: 9) {
+      Header(title: "พัก", subtitle: "หลังบันทึกเซ็ต")
+      Text(String(format: "%d:%02d", remaining / 60, remaining % 60))
+        .font(.system(size: 40, weight: .heavy, design: .rounded))
+        .foregroundColor(T.accent)
+        .frame(maxWidth: .infinity, alignment: .center)
+      HStack(spacing: 6) {
+        Button(intent: RestAdjustIntent(-15)) { Pill(label: "−15", bg: T.surfaceHigh, fg: T.textPrimary) }
+          .buttonStyle(.plain)
+        Button(intent: RestAdjustIntent(15)) { Pill(label: "+15", bg: T.surfaceHigh, fg: T.textPrimary) }
+          .buttonStyle(.plain)
+        Button(intent: SkipRestIntent()) { Pill(label: "ข้าม", bg: T.accent, fg: .black) }
+          .buttonStyle(.plain)
+      }
+      Spacer(minLength: 0)
+    }
+  }
+}
+
+private struct AddView: View {
+  var entry: GymmerEntry
+  private let perPage = 4
+  var body: some View {
+    let s = entry.session
+    let filtered = entry.catalog.filter { item in
+      (s.ui.muscleFilter == nil || item.muscle == s.ui.muscleFilter) &&
+      (s.ui.equipFilter == nil || item.equipment == s.ui.equipFilter)
+    }
+    let page = s.ui.listPage
+    let slice = Array(filtered.dropFirst(page * perPage).prefix(perPage))
+    let hasMore = filtered.count > (page + 1) * perPage
+    let addedNames = s.exercises.map { $0.name }
+
+    VStack(alignment: .leading, spacing: 6) {
+      HStack(spacing: 6) {
+        Button(intent: NavIntent("fmuscle")) { filterBtn(s.ui.muscleFilter ?? "Muscle") }.buttonStyle(.plain)
+        Button(intent: NavIntent("fequip")) { filterBtn(s.ui.equipFilter ?? "Equip") }.buttonStyle(.plain)
+        Button(intent: NavIntent("log")) {
+          Text("Done").font(.system(size: 12, weight: .bold)).foregroundColor(.black)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(T.accent).clipShape(Capsule())
+        }.buttonStyle(.plain)
+      }
+      LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
+        ForEach(Array(slice.enumerated()), id: \.offset) { _, item in
+          let idx = addedNames.firstIndex(of: item.name)
+          Button(intent: AddExerciseIntent(item.name)) {
+            HStack(spacing: 5) {
+              badge(idx)
+              VStack(alignment: .leading, spacing: 1) {
+                Text(item.name).font(.system(size: 11, weight: .semibold))
+                  .foregroundColor(T.textPrimary).lineLimit(1)
+                Text(item.muscle).font(.system(size: 9))
+                  .foregroundColor(T.textTertiary).lineLimit(1)
+              }
+              Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 7).padding(.vertical, 7)
+            .frame(maxWidth: .infinity)
+            .background(idx == nil ? T.surface : T.surfaceHigh)
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+          }.buttonStyle(.plain)
+        }
+      }
+      HStack(spacing: 6) {
+        if page > 0 { Button(intent: ListPageIntent(-1)) { chevron("chevron.left") }.buttonStyle(.plain) }
+        if hasMore { Button(intent: ListPageIntent(1)) { chevron("chevron.right") }.buttonStyle(.plain) }
+        Spacer(minLength: 0)
+        Text("\(s.exercises.count) ท่าในเซสชัน").font(.system(size: 10)).foregroundColor(T.textSecondary)
+      }
+      Spacer(minLength: 0)
+    }
+  }
+
+  private func filterBtn(_ label: String) -> some View {
+    HStack(spacing: 3) {
+      Text(label).font(.system(size: 11, weight: .semibold)).foregroundColor(T.textPrimary).lineLimit(1)
+      Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundColor(T.textTertiary)
+    }
+    .padding(.horizontal, 9).padding(.vertical, 6)
+    .background(T.surfaceHigh).clipShape(Capsule())
+  }
+
+  private func badge(_ idx: Int?) -> some View {
+    ZStack {
+      Circle().fill(idx == nil ? T.surfaceHigh : T.accent).frame(width: 20, height: 20)
+      if let idx {
+        Text("\(idx + 1)").font(.system(size: 11, weight: .heavy)).foregroundColor(.black)
+      } else {
+        Image(systemName: "plus").font(.system(size: 10, weight: .bold)).foregroundColor(T.textSecondary)
+      }
+    }
+  }
+}
+
+private struct FilterView: View {
+  var entry: GymmerEntry
+  var isMuscle: Bool
+  private let perPage = 9
+  var body: some View {
+    let s = entry.session
+    let values = distinctValues()
+    let selected = isMuscle ? s.ui.muscleFilter : s.ui.equipFilter
+    let page = s.ui.filterPage
+    let slice = Array(values.dropFirst(page * perPage).prefix(perPage))
+    let hasMore = values.count > (page + 1) * perPage
+    let kind = isMuscle ? "muscle" : "equip"
+
+    VStack(alignment: .leading, spacing: 7) {
+      HStack {
+        Header(title: isMuscle ? "Filter · Muscle" : "Filter · Equip", subtitle: nil)
+        Button(intent: NavIntent("add")) {
+          Text("BACK").font(.system(size: 11, weight: .bold)).foregroundColor(T.textSecondary)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(T.surfaceHigh).clipShape(Capsule())
+        }.buttonStyle(.plain)
+      }
+      LazyVGrid(columns: [GridItem(.flexible(), spacing: 5), GridItem(.flexible(), spacing: 5), GridItem(.flexible(), spacing: 5)], spacing: 5) {
+        Button(intent: SelectFilterIntent(kind: kind, value: "")) {
+          chip("All", on: selected == nil)
+        }.buttonStyle(.plain)
+        ForEach(Array(slice.enumerated()), id: \.offset) { _, v in
+          Button(intent: SelectFilterIntent(kind: kind, value: v)) {
+            chip(v, on: selected == v)
+          }.buttonStyle(.plain)
+        }
+      }
+      HStack(spacing: 6) {
+        if page > 0 { Button(intent: FilterPageIntent(-1)) { chevron("chevron.left") }.buttonStyle(.plain) }
+        if hasMore { Button(intent: FilterPageIntent(1)) { chevron("chevron.right") }.buttonStyle(.plain) }
+        Spacer(minLength: 0)
+      }
+      Spacer(minLength: 0)
+    }
+  }
+
+  private func distinctValues() -> [String] {
+    var seen: [String] = []
+    for item in entry.catalog {
+      let v = isMuscle ? item.muscle : item.equipment
+      if !v.isEmpty && !seen.contains(v) { seen.append(v) }
+    }
+    return seen
+  }
+
+  private func chip(_ label: String, on: Bool) -> some View {
+    Text(label)
+      .font(.system(size: 11, weight: .semibold))
+      .foregroundColor(on ? .black : T.textPrimary)
+      .lineLimit(1)
+      .frame(maxWidth: .infinity).padding(.vertical, 6)
+      .background(on ? T.accent : T.surfaceHigh)
+      .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+  }
+}
+
+private struct ManageView: View {
+  var entry: GymmerEntry
+  var body: some View {
+    let s = entry.session
+    let exName = s.currentExercise?.name ?? "—"
+    VStack(alignment: .leading, spacing: 6) {
+      HStack {
+        Header(title: "Manage", subtitle: exName)
+        Button(intent: NavIntent("log")) {
+          Text("BACK").font(.system(size: 11, weight: .bold)).foregroundColor(T.textSecondary)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(T.surfaceHigh).clipShape(Capsule())
+        }.buttonStyle(.plain)
+      }
+      manageRow(title: "เซ็ต",
+                add: AnyView(Button(intent: AddSetIntent()) { miniPill("+ เพิ่ม", T.surfaceHigh, T.textPrimary) }.buttonStyle(.plain)),
+                remove: AnyView(Button(intent: RemoveSetIntent()) { miniPill("− ลบ", T.surfaceHigh, T.textPrimary) }.buttonStyle(.plain)))
+      manageRow(title: "ท่า",
+                add: AnyView(Button(intent: NavIntent("add")) { miniPill("+ เพิ่ม", T.surfaceHigh, T.textPrimary) }.buttonStyle(.plain)),
+                remove: AnyView(Button(intent: RemoveExerciseIntent()) { miniPill("− ลบ", T.surfaceHigh, T.textPrimary) }.buttonStyle(.plain)))
+      HStack(spacing: 6) {
+        Button(intent: FinishSessionIntent()) { Pill(label: "จบ session", bg: T.accent, fg: .black) }.buttonStyle(.plain)
+        Button(intent: DiscardIntent()) { Pill(label: "Discard", bg: T.surfaceHigh, fg: T.danger) }.buttonStyle(.plain)
+      }
+      Spacer(minLength: 0)
+    }
+  }
+
+  private func manageRow(title: String, add: AnyView, remove: AnyView) -> some View {
+    HStack(spacing: 6) {
+      Text(title).font(.system(size: 12, weight: .semibold)).foregroundColor(T.textSecondary)
+        .frame(width: 44, alignment: .leading)
+      add
+      remove
+    }
+  }
+
+  private func miniPill(_ label: String, _ bg: Color, _ fg: Color) -> some View {
+    Text(label).font(.system(size: 12, weight: .bold)).foregroundColor(fg)
+      .frame(maxWidth: .infinity).padding(.vertical, 6)
+      .background(bg).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+  }
+}
+
+// MARK: - Router / entry view
+
+struct GymmerWidgetEntryView: View {
+  var entry: GymmerEntry
+  var body: some View {
+    router
+      .padding(12)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      .containerBackground(T.bg, for: .widget)
+  }
+
+  @ViewBuilder private var router: some View {
+    let s = entry.session
+    if !s.active {
+      StartView(entry: entry)
+    } else {
+      switch s.ui.page {
+      case "add": AddView(entry: entry)
+      case "fmuscle": FilterView(entry: entry, isMuscle: true)
+      case "fequip": FilterView(entry: entry, isMuscle: false)
+      case "manage": ManageView(entry: entry)
+      default: LogView(entry: entry)
+      }
     }
   }
 }
@@ -164,7 +984,6 @@ struct GymmerWidgetEntryView: View {
 @main
 struct GymmerWidget: Widget {
   let kind = "GymmerWidget"
-
   var body: some WidgetConfiguration {
     StaticConfiguration(kind: kind, provider: Provider()) { entry in
       GymmerWidgetEntryView(entry: entry)

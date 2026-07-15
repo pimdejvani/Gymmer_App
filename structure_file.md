@@ -91,7 +91,7 @@ flutter.bat run -d chrome                     # run the app
 ### iOS native companion
 | File | Contents |
 |---|---|
-| `ios/GymmerWidget/GymmerWidget.swift` | iOS 17 medium widget and Live Activity pages, shared JSON store/mutations, ordinary home-widget intents, terminal Activity dismissal, rest notification, Runner-side Activity wrapper, and iOS 18 system Controls |
+| `ios/GymmerWidget/GymmerWidget.swift` | iOS 17 medium widget and Live Activity pages, shared JSON store/mutations, widget/Activity intents, terminal dismissal, rest notification, Runner-side App Shortcuts, and iOS 18 system Controls |
 | `ios/GymmerWidget/GymmerActivityAttributes.swift` | ActivityKit attributes/state shared by Runner and WidgetKit targets |
 | `ios/GymmerWidget/GymmerNavigationIntent.swift` | Page-navigation `LiveActivityIntent` shared by Runner and WidgetKit targets; saves the page and updates ActivityKit from the app process |
 | `ios/Runner/AppDelegate.swift` | Flutter method channel for App Group files plus foreground Live Activity start/update/end |
@@ -158,6 +158,7 @@ Runner foreground → starts/updates/ends Live Activity
 LiveActivityIntent wrapper → Runner process → shared mutation → update ActivityKit
 Home-widget AppIntents → widget extension → same shared mutation → reload timeline
 iOS 18 Controls → Control Center / Lock Screen / Action button → widget AppIntents
+iOS 17 App Shortcuts → Siri / Spotlight / Shortcuts → same mutation intents
 ```
 
 State flows down as constructor params; mutations flow up as callbacks to

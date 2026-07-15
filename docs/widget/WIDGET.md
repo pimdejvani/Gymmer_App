@@ -181,6 +181,14 @@ REP +1, REP −1, Complete Set และ Next Exercise. นี่เป็น sy
 เส้นทางเดียวกับ Home Widget พร้อม `alwaysAllowed`. พื้นที่ Lock Screen มีจำนวน
 ช่องจำกัด จึงไม่แทนหน้าเต็มของ Live Activity
 
+### Siri / App Shortcuts (iOS 17+)
+
+Runner ประกาศ App Shortcuts หกรายการจาก action ชุดเดียวกับ System Controls
+จึงใช้ผ่าน Siri, Spotlight และแอป Shortcuts ได้ทันทีหลังติดตั้ง เช่น “Complete
+set in Gymmer”, “Add weight in Gymmer” และ “Next exercise in Gymmer”. Intent
+จะ no-op ถ้าไม่มี active session เพื่อไม่ให้คำสั่งเก่าหรือ control ที่ยังอยู่
+สร้าง session state ที่ผิดพลาด
+
 ## ไฟล์ implementation
 
 | ไฟล์ | หน้าที่ |

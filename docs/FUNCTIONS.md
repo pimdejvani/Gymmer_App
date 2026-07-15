@@ -136,6 +136,12 @@ want to Control Center, the two Lock Screen control slots, or the Action button.
 These controls use the stable extension-side mutation path and do not require
 the app to present media playback.
 
+The same six fixed actions are App Shortcuts on iOS 17+. They appear without
+manual setup in Siri, Spotlight, and the Shortcuts app. Example phrases include
+“Complete set in Gymmer”, “Add weight in Gymmer”, and “Next exercise in
+Gymmer”. All high-frequency intents return without mutation when no workout is
+active, so stale system controls or spoken commands cannot create ghost state.
+
 Finish and Discard write their terminal outcome and reload the home widget
 before awaiting immediate ActivityKit dismissal. A cold app launch reconciles
 that terminal revision before restoring a SQLite draft.

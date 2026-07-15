@@ -53,7 +53,9 @@ iOS can still require authentication for third-party Lock Screen interactions;
 media apps such as YouTube use the separate system Now Playing controls. On
 iOS 18+, Gymmer also provides system Controls for KG/REP +/−, Complete Set, and
 Next Exercise; users can add them to Control Center, Lock Screen control slots,
-or the Action button for direct system-owned access.
+or the Action button for direct system-owned access. The same actions are
+available as zero-setup App Shortcuts for Siri, Spotlight, and Shortcuts on
+iOS 17 and later.
 See [`docs/widget/WIDGET.md`](docs/widget/WIDGET.md) for the state contract,
 pages, and known release checks.
 

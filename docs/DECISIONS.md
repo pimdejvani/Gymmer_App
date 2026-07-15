@@ -111,3 +111,12 @@ Finish and Discard persist and request the home-widget redraw before awaiting
 ActivityKit dismissal. App startup must reconcile a newer widget-authored
 terminal revision before pushing the SQLite draft, or an ended workout can be
 accidentally restored.
+
+## 14. (2026-07-16) Reuse mutation intents for hands-free App Shortcuts
+
+Complete Set, Next Exercise, and fixed KG/REP adjustments are published as six
+preconfigured App Shortcuts from the Runner target. This gives Siri, Spotlight,
+and Shortcuts access without duplicating workout rules or adding HealthKit
+permissions. Every shortcut includes Apple's required application-name token,
+uses the same `alwaysAllowed` intents as system Controls, and no-ops when there
+is no active session.

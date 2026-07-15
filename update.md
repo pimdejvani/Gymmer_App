@@ -14,6 +14,9 @@ Short log, newest first. Full historic detail is archived in `backup/`
 - Added iOS 18 system Controls for KG/REP +/−, Complete Set, and Next Exercise.
   Users can place them in Control Center, the Lock Screen control slots, or on
   the Action button; iOS 17 continues using the existing widget/Live Activity.
+- Added six zero-setup App Shortcuts for the same actions on iOS 17+, enabling
+  Siri, Spotlight, and Shortcuts without HealthKit permissions or duplicated
+  workout logic. These high-frequency intents now no-op if no session is active.
 
 ## 2026-07-15 — iOS WidgetKit workout logger + Lock Screen Live Activity
 

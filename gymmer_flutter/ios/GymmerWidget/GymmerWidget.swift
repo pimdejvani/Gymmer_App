@@ -481,8 +481,8 @@ struct AdjustIntent: AppIntent {
   init(field: String, delta: Double) { self.field = field; self.delta = delta }
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
+    guard s.active, !s.exercises.isEmpty else { return .result() }
     let ei = s.safeExIndex
-    guard !s.exercises.isEmpty else { return .result() }
     var ex = s.exercises[ei]
     let si = min(max(ex.curSet, 0), ex.sets.count - 1)
     if field == "kg" {
@@ -504,8 +504,8 @@ struct CompleteSetIntent: AppIntent {
   static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
+    guard s.active, !s.exercises.isEmpty else { return .result() }
     let ei = s.safeExIndex
-    guard !s.exercises.isEmpty else { return .result() }
     var ex = s.exercises[ei]
     let si = min(max(ex.curSet, 0), ex.sets.count - 1)
     ex.sets[si].done = true
@@ -536,7 +536,7 @@ struct NextExerciseIntent: AppIntent {
   static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
-    guard !s.exercises.isEmpty else { return .result() }
+    guard s.active, !s.exercises.isEmpty else { return .result() }
     s.curEx = (s.safeExIndex + 1) % s.exercises.count
     await WStore.saveAndSync(s)
     return .result()
@@ -812,6 +812,57 @@ struct LiveMutationIntent: LiveActivityIntent {
     return .result()
   }
 }
+
+#if !GYMMER_WIDGET_EXTENSION
+/// Zero-setup Siri/Spotlight/Shortcuts entry points for the same actions used
+/// by the widget and iOS 18 system Controls. The app-name token is required by
+/// App Shortcuts and lets the system substitute localized app-name synonyms.
+@available(iOS 17.0, *)
+struct GymmerAppShortcuts: AppShortcutsProvider {
+  static var appShortcuts: [AppShortcut] {
+    AppShortcut(
+      intent: CompleteSetIntent(),
+      phrases: [
+        "Complete set in \(.applicationName)",
+        "Finish this set in \(.applicationName)"
+      ],
+      shortTitle: "Complete Set",
+      systemImageName: "checkmark.circle.fill"
+    )
+    AppShortcut(
+      intent: AdjustIntent(field: "kg", delta: 2.5),
+      phrases: ["Add weight in \(.applicationName)"],
+      shortTitle: "Add Weight",
+      systemImageName: "plus.circle"
+    )
+    AppShortcut(
+      intent: AdjustIntent(field: "kg", delta: -2.5),
+      phrases: ["Reduce weight in \(.applicationName)"],
+      shortTitle: "Reduce Weight",
+      systemImageName: "minus.circle"
+    )
+    AppShortcut(
+      intent: AdjustIntent(field: "rep", delta: 1),
+      phrases: ["Add a rep in \(.applicationName)"],
+      shortTitle: "Add Rep",
+      systemImageName: "plus.circle"
+    )
+    AppShortcut(
+      intent: AdjustIntent(field: "rep", delta: -1),
+      phrases: ["Reduce a rep in \(.applicationName)"],
+      shortTitle: "Reduce Rep",
+      systemImageName: "minus.circle"
+    )
+    AppShortcut(
+      intent: NextExerciseIntent(),
+      phrases: ["Next exercise in \(.applicationName)"],
+      shortTitle: "Next Exercise",
+      systemImageName: "chevron.right.circle"
+    )
+  }
+
+}
+#endif
 
 #if GYMMER_WIDGET_EXTENSION
 // MARK: - Timeline

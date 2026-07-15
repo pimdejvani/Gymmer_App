@@ -122,11 +122,11 @@ notification-backed rest timer; `−15`, `+15`, and Skip are available while it
 runs. The widget's rest countdown uses a self-ticking SwiftUI timer rather than
 per-second WidgetKit timeline entries.
 
-The Lock Screen Live Activity reuses the same Add, Muscle/Equipment Filter,
-Log, Rest, and Manage views as the home widget; only Start is omitted. Its
-controls run the same App Intents as the home widget. The foreground Flutter
-app starts or ends the activity; the extension refreshes it after background
-mutations.
+The Lock Screen and expanded Dynamic Island Live Activity reuse the same Add,
+Muscle/Equipment Filter, Log, Rest, and Manage views as the home widget; only
+Start is omitted. The foreground Flutter app starts or ends the activity. Page
+navigation runs as a shared `LiveActivityIntent` in Runner, persists the page,
+reloads the widget, and updates the ActivityKit content state.
 
 This companion is iOS-only and does not change the Android/web feature scope.
 

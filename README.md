@@ -38,13 +38,16 @@ App regenerate helpers: `dart run flutter_launcher_icons` (app icon from
 
 ## iOS widget and Lock Screen activity
 
-The `ios` branch includes a WidgetKit medium widget and an interactive Lock
-Screen Live Activity. Both use the App Group shared container; the Flutter app
+The `ios` branch includes a WidgetKit medium widget and an interactive Live
+Activity for the Lock Screen and expanded Dynamic Island. Both use the App
+Group shared container; the Flutter app
 writes the exercise catalog, routines, and active-session snapshot, while the
 widget extension can mutate the session and the app reconciles those changes
 back into SQLite on resume. The widget requires iOS 17. The Live Activity uses
-the same Add/Filter/Log/Rest/Manage surface as the widget, without Start; it is
-started/ended by the foreground app and updated by the extension's App Intents.
+the same Add/Filter/Log/Rest/Manage surface as the widget, without Start. Page
+navigation uses a shared `LiveActivityIntent` in Runner and the widget target.
+On iPhones without Dynamic Island, use the Home Screen widget for persistent
+unlocked controls; the Live Activity itself is persistent on the Lock Screen.
 See [`docs/widget/WIDGET.md`](docs/widget/WIDGET.md) for the state contract,
 pages, and known release checks.
 

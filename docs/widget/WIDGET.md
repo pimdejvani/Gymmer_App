@@ -7,8 +7,8 @@
 สอง surface ที่ใช้ App Intents และ state ชุดเดียวกัน:
 
 - Home Screen WidgetKit widget: ขนาด **Medium (4×2)** เท่านั้น
-- Lock Screen Live Activity: ใช้หน้า Add / Filter / Log / Rest / Manage ชุด
-  เดียวกับ widget โดยตัดเฉพาะหน้า Start และมีปุ่มโต้ตอบ
+- Live Activity: Lock Screen และ expanded Dynamic Island ใช้หน้า Add / Filter /
+  Log / Rest / Manage ชุดเดียวกับ widget โดยตัดเฉพาะหน้า Start
 
 Widget extension ตั้ง deployment target เป็น iOS 17 เพื่อใช้ interactive
 `Button(intent:)`. Flutter app ยังเป็นแอปหลักและยังรองรับ Android/web ในฐานะ
@@ -31,6 +31,9 @@ GymmerWidget.swift
   ├─ reads the three JSON snapshots
   ├─ App Intents mutate session.json
   └─ LiveSync.refresh() updates the running Live Activity
+
+GymmerNavigationIntent.swift (Runner + Widget target)
+  └─ LiveActivityIntent saves page + updates ActivityKit in the app process
 
 Flutter resumes
   └─ reads a newer widget-authored session.json revision → rebuilds → saves SQLite
@@ -68,7 +71,8 @@ channel การเขียน/อ่านจะ no-op และแอปห�
 
 ทุก action เป็น App Intent. Action ที่เปลี่ยน session ใช้
 `WStore.saveAndSync` ซึ่งทำสามอย่าง: save, reload widget timeline และ refresh
-Live Activity ถ้ามีอยู่; action ที่เปลี่ยนเฉพาะหน้า/pager ใช้ save ธรรมดา
+Live Activity ถ้ามีอยู่ ส่วน page navigation ใช้ `NavIntent` แบบ
+`LiveActivityIntent` ซึ่ง compile เข้า Runner และ widget target
 
 ปุ่มบน Live Activity ครอบคลุมชุดควบคุมของหน้า Log/Rest ไม่รวม Start, Add,
 Filter หรือ Manage
@@ -136,9 +140,10 @@ component แยกจาก widget เว้นแต่ข้อจำกั�
 1. Flutter foreground เรียก `startLiveActivity` เมื่อมี active workout; ถ้ามี
    activity อยู่แล้วจะ update แทนการสร้างซ้อน
 2. การแก้ draft จากแอปส่ง state ปัจจุบันไป Runner เพื่อ update
-3. เมื่อแอปอยู่ background ปุ่มบน widget/Live Activity รันใน extension,
-   เขียน `session.json` แล้ว `LiveSync.refresh()` อ่าน state ใหม่มา update
-4. finish/discard เรียก `endLiveActivity` และปิด activity แบบ immediate
+3. Page navigation บน Live Activity รัน `NavIntent` ใน Runner process, เขียน
+   `session.json`, reload widget และ update ActivityKit content state โดยตรง
+4. Session mutation อื่นเขียน shared session แล้วเรียก `LiveSync.refresh()`
+5. finish/discard เรียก `endLiveActivity` และปิด activity แบบ immediate
 
 State ที่แสดงคือชื่อ routine/session, exercise ปัจจุบัน, `ท่า n/m`, set label,
 KG, REP และ previous. มีสาม phase:
@@ -147,9 +152,10 @@ KG, REP และ previous. มีสาม phase:
 - `rest` — แสดงจาก `LogView` เมื่อ countdown ทำงาน
 - `done` / `restdone` — ปุ่ม finish ตาม state ของ widget
 
-Lock Screen ใช้ layout สูงประมาณ 158pt. Dynamic Island มี compact/minimal และ
-expanded presentation ขั้นต่ำตาม API; การออกแบบหลักที่ตรวจสอบแล้วคือ Lock
-Screen
+Lock Screen ใช้ layout สูงประมาณ 158pt. Dynamic Island แบบ compact/minimal แสดง
+ข้อมูลย่อ; เมื่อกดค้างให้ expanded presentation ซึ่ง reuse หน้าชุดเดียวกับ
+Lock Screen. iPhone ที่ไม่มี Dynamic Island ไม่มี Live Activity แบบ persistent
+ตอนปลดล็อก จึงต้องใช้ Home Screen widget หากต้องการกดได้ตลอดโดยไม่ล็อกจอ
 
 ## ไฟล์ implementation
 
@@ -160,6 +166,7 @@ Screen
 | `gymmer_flutter/ios/Runner/SceneDelegate.swift` | temporary App Group POC launch alert; ต้องลบก่อน release |
 | `gymmer_flutter/ios/GymmerWidget/GymmerWidget.swift` | widget views, App Intents, shared store, notification, Live Activity UI/sync |
 | `gymmer_flutter/ios/GymmerWidget/GymmerActivityAttributes.swift` | shared ActivityKit attributes/content state |
+| `gymmer_flutter/ios/GymmerWidget/GymmerNavigationIntent.swift` | shared page-navigation LiveActivityIntent ใน Runner + widget target |
 | `gymmer_flutter/ios/Runner.xcodeproj/project.pbxproj` | WidgetKit target, embed extension, shared source membership |
 | `gymmer_flutter/ios/Runner/Info.plist` | `NSSupportsLiveActivities` และ photo-library permission |
 | `gymmer_flutter/ios/Runner/Runner.entitlements` | Runner App Group entitlement |
@@ -169,6 +176,7 @@ Screen
 
 - Widget รองรับเฉพาะ Medium; ไม่มี scrolling และไม่มี text/number entry
 - Live Activity จะทำงานไม่ได้ถ้าผู้ใช้ปิด Live Activities หรือ OS ไม่รองรับ
+- iPhone ที่ไม่มี Dynamic Island แสดง Live Activity แบบ persistent เฉพาะ Lock Screen
 - notification permission ต้องได้รับเพื่อให้ rest-end sound/vibration ทำงาน
 - App Group ต้องถูก grant ให้ทั้ง Runner และ extension หลัง SideStore re-sign
 - ลบ alert `App Group POC v2` จาก `SceneDelegate.swift`

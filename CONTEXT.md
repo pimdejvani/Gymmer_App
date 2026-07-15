@@ -71,8 +71,10 @@ iteration). Desktop is out of scope.
 - iOS companion is implemented on branch `ios`: a WidgetKit medium widget
   provides a six-page workout flow (Start, Add, Muscle/Equipment filters, Log,
   Manage) and reads/writes the active session through the App Group container.
-  The Lock Screen Live Activity reuses the widget's Add, Muscle/Equipment
-  Filter, Log, Rest, and Manage pages (without Start) and the same controls.
+  The Lock Screen and expanded Dynamic Island Live Activity reuse the widget's
+  Add, Muscle/Equipment Filter, Log, Rest, and Manage pages (without Start).
+  Page navigation is a shared `LiveActivityIntent` compiled into Runner and the
+  widget target so it updates the running Activity from the app process.
 - Widget state is shared through `catalog.json`, `routines.json`, and
   `session.json`. The Flutter app reconciles widget-authored `session.json`
   revisions into SQLite when it resumes; widget/native failures are ignored on

@@ -93,6 +93,7 @@ flutter.bat run -d chrome                     # run the app
 |---|---|
 | `ios/GymmerWidget/GymmerWidget.swift` | iOS 17 medium WidgetKit widget: Start/Add/Filter/Log/Manage pages, App Intents, rest notification, shared JSON store, and Live Activity rendering that reuses Add/Filter/Log/Rest/Manage |
 | `ios/GymmerWidget/GymmerActivityAttributes.swift` | ActivityKit attributes/state shared by Runner and WidgetKit targets |
+| `ios/GymmerWidget/GymmerNavigationIntent.swift` | Page-navigation `LiveActivityIntent` shared by Runner and WidgetKit targets; saves the page and updates ActivityKit from the app process |
 | `ios/Runner/AppDelegate.swift` | Flutter method channel for App Group files plus foreground Live Activity start/update/end |
 | `ios/Runner/SceneDelegate.swift` | Temporary App Group provisioning probe; remove the launch alert before release, keep runtime group discovery in AppDelegate/widget |
 | `ios/Runner/Info.plist` | Photo-library permission and `NSSupportsLiveActivities` declarations |
@@ -154,7 +155,8 @@ Flutter app ↔ AppDelegate.swift ↔ App Group container
                             reconciled into SQLite when Flutter resumes)
 
 Runner foreground → starts/updates/ends Live Activity
-Widget extension App Intents → mutates session.json → refreshes Live Activity
+Shared navigation LiveActivityIntent → Runner process → saves page + updates ActivityKit
+Widget extension session intents → mutate session.json → refresh Live Activity
 ```
 
 State flows down as constructor params; mutations flow up as callbacks to

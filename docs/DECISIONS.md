@@ -78,17 +78,18 @@ The App Group identifier is resolved from the installed provisioning profile at
 runtime because SideStore can rewrite it during re-signing. Both Runner and
 WidgetKit use the same resolver.
 
-## 12. (2026-07-15) Live Activity starts in Runner, updates in the extension
+## 12. (2026-07-15) Live Activity starts in Runner; navigation runs in Runner
 
 Only the foreground app starts the ActivityKit Live Activity. Flutter sends the
 current workout state through the `gymmer/widget` method channel; Runner starts,
-updates, or ends the activity. When the app is backgrounded, the widget
-extension's App Intents mutate the shared session and call `LiveSync.refresh()`
-to update the running activity. The same App Intents power the home widget and
-Lock Screen controls so both surfaces stay behaviorally aligned.
+updates, or ends the activity. Session mutation intents use the App Group and
+refresh the running activity. Page navigation specifically uses a shared
+`LiveActivityIntent` compiled into Runner and the widget target because Apple
+runs that intent in the app process; it writes `session.json`, reloads the home
+widget, and updates the ActivityKit content state before returning.
 
 The companion target is iOS 17 and supports the medium home widget plus Lock
-Screen/Dynamic Island presentations. The Lock Screen deliberately reuses the
-home widget's Add/Filter/Log/Rest/Manage surface and omits only Start. Activity
-controls are best-effort when Live Activities are disabled by the user or
-unavailable on the OS.
+Screen/Dynamic Island presentations. The Lock Screen and expanded Dynamic
+Island deliberately reuse the home widget's Add/Filter/Log/Rest/Manage surface
+and omit only Start. A device without Dynamic Island has no persistent unlocked
+Live Activity surface, so the Home Screen widget is the unlocked alternative.

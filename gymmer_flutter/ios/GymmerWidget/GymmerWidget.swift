@@ -292,19 +292,6 @@ enum Num {
 
 // -- Navigation -------------------------------------------------------------
 
-struct NavIntent: AppIntent {
-  static var title: LocalizedStringResource = "Navigate"
-  @Parameter(title: "page") var page: String
-  init() {}
-  init(_ page: String) { self.page = page }
-  func perform() async throws -> some IntentResult {
-    var s = WStore.loadSession()
-    s.ui.page = page
-    await WStore.saveAndSync(s)
-    return .result()
-  }
-}
-
 // -- Start page -------------------------------------------------------------
 
 struct StartEmptyIntent: AppIntent {
@@ -1326,10 +1313,8 @@ struct GymmerBundle: WidgetBundle {
 
 // MARK: - Live Activity (same pages as the widget, without Start)
 
-// iPhone 12 Pro has no Dynamic Island, so only the Lock Screen presentation is
-// designed here; the dynamicIsland closure is a minimal placeholder the API
-// still requires. The Lock Screen uses the same Add/Filter/Log/Manage views and
-// App Intents as the home widget; only the Start page is omitted.
+// The Lock Screen and expanded Dynamic Island use the same Add/Filter/Log/Manage
+// views and App Intents as the home widget; only the Start page is omitted.
 struct GymmerLiveActivity: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: GymmerActivityAttributes.self) { context in
@@ -1338,12 +1323,8 @@ struct GymmerLiveActivity: Widget {
         .activitySystemActionForegroundColor(T.textPrimary)
     } dynamicIsland: { context in
       DynamicIsland {
-        DynamicIslandExpandedRegion(.leading) {
-          Text(context.attributes.title).font(.system(size: 12, weight: .bold))
-            .foregroundColor(T.accent).lineLimit(1)
-        }
-        DynamicIslandExpandedRegion(.center) {
-          Text(context.state.exName).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+        DynamicIslandExpandedRegion(.bottom) {
+          LiveActivityEntryView(state: context.state, title: context.attributes.title)
         }
       } compactLeading: {
         Image(systemName: "dumbbell.fill").foregroundColor(T.accent)

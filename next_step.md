@@ -22,11 +22,14 @@ The `ios/` folder is generated, the app icon ships, and CI builds an unsigned
 `apps.json` SideStore source). Distribution today is **free sideload via
 SideStore** — no Apple Developer account. Work lives on branch `ios`.
 
-The WidgetKit target and Lock Screen Live Activity are implemented on `ios`.
+The WidgetKit target and Live Activity are implemented on `ios`.
 The medium widget is interactive across Start/Add/Filter/Log/Rest/Manage. The
 Live Activity reuses Add/Filter/Log/Rest/Manage and omits only Start, using the
 same page views and App Intents. Shared state is `catalog.json` +
 `routines.json` + `session.json` in the runtime App Group container.
+The full interactive presentation is available on the Lock Screen and in an
+expanded Dynamic Island. Phones without Dynamic Island, including iPhone 12
+Pro, must use the Lock Screen presentation or the Home Screen widget.
 
 Remaining iOS items:
 

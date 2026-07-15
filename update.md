@@ -37,6 +37,11 @@ Implemented on branch `ios` across the widget commits from `cdea8c8` through
   release cleanup item in `next_step.md`.
 - CI now runs a parallel debug iOS compile check before/alongside the release
   build, and cancels superseded runs per branch.
+- Fixed Live Activity page navigation by moving `NavIntent` to a source file
+  compiled into Runner and the widget target and adopting `LiveActivityIntent`.
+  The expanded Dynamic Island now reuses the Lock Screen's interactive pages;
+  phones without Dynamic Island use the Home Screen widget for persistent
+  unlocked controls.
 
 ## 2026-07-14 — iOS photo permission recorded
 

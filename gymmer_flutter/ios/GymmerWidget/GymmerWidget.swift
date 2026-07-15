@@ -377,6 +377,44 @@ struct AddExerciseIntent: AppIntent {
   }
 }
 
+// Picker cell, right zone: +1 set on an already-queued exercise (copies the last set).
+struct PickerAddSetIntent: AppIntent {
+  static var title: LocalizedStringResource = "Add set from picker"
+  @Parameter(title: "name") var name: String
+  init() {}
+  init(_ name: String) { self.name = name }
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    guard let i = s.exercises.firstIndex(where: { $0.name == name }) else { return .result() }
+    let last = s.exercises[i].sets.last
+    s.exercises[i].sets.append(WSet(kg: last?.kg ?? "", reps: last?.reps ?? "", prev: last?.prev))
+    WStore.save(s)
+    return .result()
+  }
+}
+
+// Picker cell, circle badge: −1 set; removing the last set drops the exercise from the queue.
+struct PickerRemoveSetIntent: AppIntent {
+  static var title: LocalizedStringResource = "Remove set from picker"
+  @Parameter(title: "name") var name: String
+  init() {}
+  init(_ name: String) { self.name = name }
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    guard let i = s.exercises.firstIndex(where: { $0.name == name }) else { return .result() }
+    if s.exercises[i].sets.count <= 1 {
+      s.exercises.remove(at: i)
+      if s.curEx >= s.exercises.count { s.curEx = max(0, s.exercises.count - 1) }
+    } else {
+      s.exercises[i].sets.removeLast()
+      let cap = s.exercises[i].sets.count - 1
+      if s.exercises[i].curSet > cap { s.exercises[i].curSet = cap }
+    }
+    WStore.save(s)
+    return .result()
+  }
+}
+
 struct ListPageIntent: AppIntent {
   static var title: LocalizedStringResource = "Page exercise list"
   @Parameter(title: "delta") var delta: Int
@@ -798,11 +836,13 @@ private struct LogView: View {
     let ex = s.exercises[ei]
     let si = min(max(ex.curSet, 0), ex.sets.count - 1)
     let set = ex.sets[si]
+    // When every set of this exercise is logged, show "Done" instead of the set counter.
+    let counter = ex.sets.allSatisfy { $0.done } ? "Done" : "เซ็ต \(si + 1)/\(ex.sets.count)"
     return VStack(alignment: .leading, spacing: 6) {
       HStack(alignment: .firstTextBaseline, spacing: 6) {
         Text(ex.name).font(.system(size: 14, weight: .bold))
           .foregroundColor(T.textPrimary).lineLimit(1)
-        Text("ท่า \(ei + 1)/\(s.exercises.count) · เซ็ต \(si + 1)/\(ex.sets.count)")
+        Text("ท่า \(ei + 1)/\(s.exercises.count) · \(counter)")
           .font(.system(size: 10)).foregroundColor(T.textSecondary).lineLimit(1)
         Spacer(minLength: 0)
         // Manage moved up to the header to free the control row.
@@ -935,54 +975,62 @@ private struct AddView: View {
     let page = s.ui.listPage
     let slice = Array(filtered.dropFirst(page * perPage).prefix(perPage))
     let hasMore = filtered.count > (page + 1) * perPage
-    let addedNames = s.exercises.map { $0.name }
 
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 6) {
         Button(intent: NavIntent("fmuscle")) { filterBtn(s.ui.muscleFilter ?? "Muscle") }.buttonStyle(.plain)
         Button(intent: NavIntent("fequip")) { filterBtn(s.ui.equipFilter ?? "Equip") }.buttonStyle(.plain)
+        Spacer(minLength: 0)
+        // Single right-pager that wraps back to page 0 past the last page.
+        Button(intent: ListPageIntent(hasMore ? 1 : -page)) { chevron("chevron.right") }.buttonStyle(.plain)
         Button(intent: NavIntent("log")) {
           Text("Done").font(.system(size: 12, weight: .bold)).foregroundColor(.black)
             .padding(.horizontal, 12).padding(.vertical, 6)
             .background(T.accent).clipShape(Capsule())
         }.buttonStyle(.plain)
       }
-      // Pad to a full page of cells so the grid height (and the nav row below)
-      // stays fixed no matter how many exercises the last page has.
+      // Pad to a full page of cells so the grid height stays fixed no matter
+      // how many exercises the last page has.
       let cells: [CatalogItem?] = slice.map { Optional($0) }
         + Array<CatalogItem?>(repeating: nil, count: max(0, perPage - slice.count))
       LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
         ForEach(Array(cells.enumerated()), id: \.offset) { _, item in
           if let item {
-            let idx = addedNames.firstIndex(of: item.name)
-            Button(intent: AddExerciseIntent(item.name)) {
+            if let qi = s.exercises.firstIndex(where: { $0.name == item.name }) {
+              // Already queued: split into two tap zones sharing one background.
+              // Left circle = −1 set (removes the exercise at 1 set); right = +1 set.
               HStack(spacing: 5) {
-                badge(idx)
-                VStack(alignment: .leading, spacing: 1) {
-                  Text(item.name).font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(T.textPrimary).lineLimit(1)
-                  Text(item.muscle).font(.system(size: 9))
-                    .foregroundColor(T.textTertiary).lineLimit(1)
-                }
-                Spacer(minLength: 0)
+                Button(intent: PickerRemoveSetIntent(item.name)) {
+                  queueBadge(order: qi + 1, sets: s.exercises[qi].sets.count)
+                }.buttonStyle(.plain)
+                Button(intent: PickerAddSetIntent(item.name)) {
+                  cellText(item)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }.buttonStyle(.plain)
               }
               .padding(.horizontal, 7).padding(.vertical, 7)
               .frame(maxWidth: .infinity)
-              .background(idx == nil ? T.surface : T.surfaceHigh)
+              .background(T.surfaceHigh)
               .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            }.buttonStyle(.plain)
+            } else {
+              // Not queued: tap anywhere on the cell to add it (1 set).
+              Button(intent: AddExerciseIntent(item.name)) {
+                HStack(spacing: 5) {
+                  plusBadge()
+                  cellText(item)
+                  Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 7).padding(.vertical, 7)
+                .frame(maxWidth: .infinity)
+                .background(T.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+              }.buttonStyle(.plain)
+            }
           } else {
             Color.clear.frame(height: 34) // placeholder keeps the row height
           }
         }
-      }
-      HStack(spacing: 6) {
-        if page > 0 { Button(intent: ListPageIntent(-1)) { chevron("chevron.left") }.buttonStyle(.plain) }
-        else { dimChevron("chevron.left") }
-        if hasMore { Button(intent: ListPageIntent(1)) { chevron("chevron.right") }.buttonStyle(.plain) }
-        else { dimChevron("chevron.right") }
-        Spacer(minLength: 0)
-        Text("\(s.exercises.count) ท่าในเซสชัน").font(.system(size: 10)).foregroundColor(T.textSecondary)
       }
       Spacer(minLength: 0)
     }
@@ -997,14 +1045,29 @@ private struct AddView: View {
     .background(T.surfaceHigh).clipShape(Capsule())
   }
 
-  private func badge(_ idx: Int?) -> some View {
+  private func cellText(_ item: CatalogItem) -> some View {
+    VStack(alignment: .leading, spacing: 1) {
+      Text(item.name).font(.system(size: 11, weight: .semibold))
+        .foregroundColor(T.textPrimary).lineLimit(1)
+      Text(item.muscle).font(.system(size: 9))
+        .foregroundColor(T.textTertiary).lineLimit(1)
+    }
+  }
+
+  private func plusBadge() -> some View {
     ZStack {
-      Circle().fill(idx == nil ? T.surfaceHigh : T.accent).frame(width: 20, height: 20)
-      if let idx {
-        Text("\(idx + 1)").font(.system(size: 11, weight: .heavy)).foregroundColor(.black)
-      } else {
-        Image(systemName: "plus").font(.system(size: 10, weight: .bold)).foregroundColor(T.textSecondary)
-      }
+      Circle().fill(T.surfaceHigh).frame(width: 20, height: 20)
+      Image(systemName: "plus").font(.system(size: 10, weight: .bold)).foregroundColor(T.textSecondary)
+    }
+  }
+
+  // Queued exercise badge: "order x sets" (e.g. 1x3). Tapping it removes a set.
+  private func queueBadge(order: Int, sets: Int) -> some View {
+    ZStack {
+      Circle().fill(T.accent).frame(width: 24, height: 24)
+      Text("\(order)x\(sets)")
+        .font(.system(size: 9, weight: .heavy)).foregroundColor(.black)
+        .lineLimit(1).minimumScaleFactor(0.6)
     }
   }
 }
@@ -1029,8 +1092,10 @@ private struct FilterView: View {
     let cells = paddedCells(leadWithAll: page == 0, values: slice)
 
     VStack(alignment: .leading, spacing: 7) {
-      HStack {
+      HStack(spacing: 6) {
         Header(title: isMuscle ? "Filter · Muscle" : "Filter · Equip", subtitle: nil)
+        // Single right-pager that wraps back to page 0 past the last page.
+        Button(intent: FilterPageIntent(hasMore ? 1 : -page)) { chevron("chevron.right") }.buttonStyle(.plain)
         Button(intent: NavIntent("add")) {
           Text("BACK").font(.system(size: 11, weight: .bold)).foregroundColor(T.textSecondary)
             .padding(.horizontal, 10).padding(.vertical, 5)
@@ -1052,13 +1117,6 @@ private struct FilterView: View {
             Color.clear.frame(height: 27)
           }
         }
-      }
-      HStack(spacing: 6) {
-        if page > 0 { Button(intent: FilterPageIntent(-1)) { chevron("chevron.left") }.buttonStyle(.plain) }
-        else { dimChevron("chevron.left") }
-        if hasMore { Button(intent: FilterPageIntent(1)) { chevron("chevron.right") }.buttonStyle(.plain) }
-        else { dimChevron("chevron.right") }
-        Spacer(minLength: 0)
       }
       Spacer(minLength: 0)
     }

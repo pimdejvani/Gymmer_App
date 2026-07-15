@@ -1,6 +1,7 @@
 import WidgetKit
 import SwiftUI
 import AppIntents
+import ActivityKit
 import UserNotifications
 
 // =============================================================================
@@ -1225,7 +1226,6 @@ struct GymmerWidgetEntryView: View {
 
 // MARK: - Widget
 
-@main
 struct GymmerWidget: Widget {
   let kind = "GymmerWidget"
   var body: some WidgetConfiguration {
@@ -1235,5 +1235,94 @@ struct GymmerWidget: Widget {
     .configurationDisplayName("Gymmer")
     .description("Log your workout session")
     .supportedFamilies([.systemMedium])
+  }
+}
+
+@main
+struct GymmerBundle: WidgetBundle {
+  var body: some Widget {
+    GymmerWidget()
+    GymmerLiveActivity()
+  }
+}
+
+// MARK: - Live Activity (Lock Screen mirror of the Log / Rest pages)
+
+// iPhone 12 Pro has no Dynamic Island, so only the Lock Screen presentation is
+// designed here; the dynamicIsland closure is a minimal placeholder the API
+// still requires. Phase 1 is read-only — interactive buttons come next.
+struct GymmerLiveActivity: Widget {
+  var body: some WidgetConfiguration {
+    ActivityConfiguration(for: GymmerActivityAttributes.self) { context in
+      LiveLockScreen(state: context.state, title: context.attributes.title)
+        .padding(14)
+        .activityBackgroundTint(T.bg)
+        .activitySystemActionForegroundColor(T.textPrimary)
+    } dynamicIsland: { context in
+      DynamicIsland {
+        DynamicIslandExpandedRegion(.leading) {
+          Text(context.attributes.title).font(.system(size: 12, weight: .bold))
+            .foregroundColor(T.accent).lineLimit(1)
+        }
+        DynamicIslandExpandedRegion(.center) {
+          Text(context.state.exName).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+        }
+      } compactLeading: {
+        Image(systemName: "dumbbell.fill").foregroundColor(T.accent)
+      } compactTrailing: {
+        Text(context.state.setLabel).font(.system(size: 11, weight: .semibold))
+      } minimal: {
+        Image(systemName: "dumbbell.fill").foregroundColor(T.accent)
+      }
+    }
+  }
+}
+
+private struct LiveLockScreen: View {
+  let state: GymmerActivityAttributes.ContentState
+  let title: String
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
+        Text(title).font(.system(size: 13, weight: .heavy)).foregroundColor(T.accent).lineLimit(1)
+        Spacer(minLength: 0)
+        Text("ท่า \(state.exIndex)/\(state.exCount)")
+          .font(.system(size: 11)).foregroundColor(T.textSecondary)
+      }
+      if state.phase == "rest", let end = state.restEnds {
+        HStack(spacing: 10) {
+          Image(systemName: "hourglass").foregroundColor(T.accent)
+          Text("พัก").font(.system(size: 14, weight: .bold)).foregroundColor(T.textPrimary)
+          Spacer(minLength: 0)
+          Text(timerInterval: Date()...max(end, Date().addingTimeInterval(1)), countsDown: true)
+            .font(.system(size: 26, weight: .heavy, design: .rounded)).monospacedDigit()
+            .foregroundColor(T.accent).multilineTextAlignment(.trailing)
+            .frame(maxWidth: 130)
+        }
+      } else {
+        HStack(alignment: .firstTextBaseline) {
+          Text(state.exName).font(.system(size: 15, weight: .bold))
+            .foregroundColor(T.textPrimary).lineLimit(1)
+          Spacer(minLength: 0)
+          Text(state.setLabel).font(.system(size: 12, weight: .semibold)).foregroundColor(T.textSecondary)
+        }
+        HStack(spacing: 20) {
+          metric("REP", state.reps.isEmpty ? "0" : state.reps)
+          metric("KG", state.kg.isEmpty ? "0" : state.kg)
+          Spacer(minLength: 0)
+        }
+        if let prev = state.prev, !prev.isEmpty {
+          Text(prev).font(.system(size: 10)).foregroundColor(T.textTertiary).lineLimit(1)
+        }
+      }
+    }
+  }
+
+  private func metric(_ label: String, _ value: String) -> some View {
+    VStack(alignment: .leading, spacing: 1) {
+      Text(label).font(.system(size: 9, weight: .semibold)).foregroundColor(T.textTertiary)
+      Text(value).font(.system(size: 22, weight: .heavy, design: .rounded))
+        .foregroundColor(T.textPrimary).lineLimit(1).minimumScaleFactor(0.6)
+    }
   }
 }

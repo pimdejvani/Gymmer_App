@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import UserNotifications
 import WidgetKit
+import ActivityKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -45,9 +46,84 @@ import WidgetKit
           result(name.flatMap { AppGroupIO.read($0) })
         case "groupID":
           result(AppGroupIO.resolvedID)
+        case "startLiveActivity":
+          if #available(iOS 16.2, *) {
+            LiveActivityManager.start(call.arguments as? [String: Any] ?? [:])
+            result(true)
+          } else { result(false) }
+        case "updateLiveActivity":
+          if #available(iOS 16.2, *) {
+            LiveActivityManager.update(call.arguments as? [String: Any] ?? [:])
+            result(true)
+          } else { result(false) }
+        case "endLiveActivity":
+          if #available(iOS 16.2, *) {
+            LiveActivityManager.end()
+            result(true)
+          } else { result(false) }
         default:
           result(FlutterMethodNotImplemented)
         }
+      }
+    }
+  }
+}
+
+/// Starts / updates / ends the workout Live Activity. Only the foreground app may
+/// START one (a widget App Intent runs in the background and can't) — hence this
+/// lives in the app and is driven from Dart. Updates while backgrounded are done
+/// by the widget extension's App Intents. Shares `GymmerActivityAttributes`,
+/// compiled into both targets.
+@available(iOS 16.2, *)
+enum LiveActivityManager {
+  static func state(from a: [String: Any]) -> GymmerActivityAttributes.ContentState {
+    GymmerActivityAttributes.ContentState(
+      phase: a["phase"] as? String ?? "log",
+      exName: a["exName"] as? String ?? "",
+      exIndex: (a["exIndex"] as? NSNumber)?.intValue ?? 1,
+      exCount: (a["exCount"] as? NSNumber)?.intValue ?? 1,
+      setLabel: a["setLabel"] as? String ?? "",
+      kg: a["kg"] as? String ?? "",
+      reps: a["reps"] as? String ?? "",
+      prev: a["prev"] as? String,
+      restEndsEpoch: (a["restEndsEpoch"] as? NSNumber)?.doubleValue
+    )
+  }
+
+  static func start(_ a: [String: Any]) {
+    guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+    // Don't stack activities — update the existing one if a session is already live.
+    if let existing = Activity<GymmerActivityAttributes>.activities.first {
+      Task { await existing.update(ActivityContent(state: state(from: a), staleDate: nil)) }
+      return
+    }
+    let attrs = GymmerActivityAttributes(title: a["title"] as? String ?? "Workout")
+    do {
+      _ = try Activity.request(
+        attributes: attrs,
+        content: ActivityContent(state: state(from: a), staleDate: nil),
+        pushType: nil
+      )
+    } catch {
+      NSLog("Gymmer: Live Activity start failed: \(error.localizedDescription)")
+    }
+  }
+
+  static func update(_ a: [String: Any]) {
+    Task {
+      for activity in Activity<GymmerActivityAttributes>.activities {
+        await activity.update(ActivityContent(state: state(from: a), staleDate: nil))
+      }
+    }
+  }
+
+  static func end() {
+    Task {
+      for activity in Activity<GymmerActivityAttributes>.activities {
+        await activity.end(
+          ActivityContent(state: activity.content.state, staleDate: nil),
+          dismissalPolicy: .immediate
+        )
       }
     }
   }

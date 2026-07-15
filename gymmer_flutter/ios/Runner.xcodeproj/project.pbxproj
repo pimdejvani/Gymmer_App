@@ -18,6 +18,8 @@
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		D1000000000000000000000A /* GymmerWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000009 /* GymmerWidget.swift */; };
 		D10000000000000000000010 /* GymmerWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = D10000000000000000000002 /* GymmerWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		D10000000000000000000021 /* GymmerActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000020 /* GymmerActivityAttributes.swift */; };
+		D10000000000000000000022 /* GymmerActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000020 /* GymmerActivityAttributes.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -81,6 +83,7 @@
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D10000000000000000000002 /* GymmerWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = GymmerWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		D10000000000000000000009 /* GymmerWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GymmerWidget.swift; sourceTree = "<group>"; };
+		D10000000000000000000020 /* GymmerActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GymmerActivityAttributes.swift; sourceTree = "<group>"; };
 		D1000000000000000000000B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		D1000000000000000000000C /* GymmerWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GymmerWidget.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -132,6 +135,7 @@
 			isa = PBXGroup;
 			children = (
 				D10000000000000000000009 /* GymmerWidget.swift */,
+				D10000000000000000000020 /* GymmerActivityAttributes.swift */,
 				D1000000000000000000000B /* Info.plist */,
 				D1000000000000000000000C /* GymmerWidget.entitlements */,
 			);
@@ -341,6 +345,7 @@
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
+				D10000000000000000000021 /* GymmerActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -349,6 +354,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D1000000000000000000000A /* GymmerWidget.swift in Sources */,
+				D10000000000000000000022 /* GymmerActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

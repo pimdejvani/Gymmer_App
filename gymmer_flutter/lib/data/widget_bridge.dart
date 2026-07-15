@@ -165,7 +165,7 @@ class WidgetBridge {
       return {
         'title': title, 'phase': 'log', 'exName': '', 'exIndex': 0,
         'exCount': 0, 'setLabel': '', 'kg': '', 'reps': '', 'prev': null,
-        'restEndsEpoch': null,
+        'restEndsEpoch': null, 'page': 'log',
       };
     }
     var exIdx = w.exercises.indexWhere((e) => e.sets.any((s) => !s.completed));
@@ -187,6 +187,7 @@ class WidgetBridge {
       'reps': set.reps.text.trim(),
       'prev': set.previousLabel,
       'restEndsEpoch': null,
+      'page': 'log',
     };
   }
 

@@ -1,149 +1,190 @@
-# GYMMER — Exercise Session Widget
+# GYMMER — iOS Widget และ Lock Screen Live Activity
 
-วิดเจ็ตหน้าจอโฮม iOS สำหรับคุมเวิร์คเอาต์ 1 เซสชัน (บันทึกเซ็ต / เลือกท่า / จัดการ) ในตัววิดเจ็ตเอง
+สถานะ: implementation ใช้งานได้บน branch `ios` (ตรวจจาก commit ถึง
+`e5f2c88`, 2026-07-15)
 
-- **ขนาด:** iOS Medium (4×2) — *ยังไม่เคาะ* ว่าจะขยับเป็น Large (4×4) เพราะบางหน้าค่อนข้างแน่น (ดู [ข้อค้างคา](#ข้อค้างคา))
-- **ธีม:** ดำสนิท ตาม `gymmer_flutter/lib/theme/app_theme.dart`
-  - bg `#000000` · surface `#121214` · surfaceHigh `#1C1C1F` · hairline `#242428`
-  - textPrimary `#F5F5F7` · textSecondary `#9E9EA7` · textTertiary `#5E5E66`
-  - accent `#7DFF8A` · danger `#FF5A5A`
-- **เทคโนโลยี:** WidgetKit + App Intents (iOS 17+) · แชร์ข้อมูลกับ Flutter ผ่าน App Group
+เอกสารนี้อธิบายโค้ดจริงของ companion บน iOS ไม่ใช่แผน mockup เดิม โดยมี
+สอง surface ที่ใช้ App Intents และ state ชุดเดียวกัน:
 
----
+- Home Screen WidgetKit widget: ขนาด **Medium (4×2)** เท่านั้น
+- Lock Screen Live Activity: ใช้หน้า Add / Filter / Log / Rest / Manage ชุด
+  เดียวกับ widget โดยตัดเฉพาะหน้า Start และมีปุ่มโต้ตอบ
 
-## ข้อจำกัดของ iOS widget (สำคัญ)
+Widget extension ตั้ง deployment target เป็น iOS 17 เพื่อใช้ interactive
+`Button(intent:)`. Flutter app ยังเป็นแอปหลักและยังรองรับ Android/web ในฐานะ
+dev stand-in; companion นี้ทำงานเฉพาะ iOS
 
-| ทำได้ | ทำไม่ได้ |
-|---|---|
-| ปุ่ม / toggle ผ่าน App Intents (กดแล้ววาดใหม่) | เลื่อน (scroll) — ใช้ปุ่ม `‹ ›` พลิกหน้าแทน |
-| เปลี่ยน "หน้า" ในวิดเจ็ตโดยเก็บ state | พิมพ์ตัวหนังสือ / กรอกเลขเป๊ะในวิดเจ็ต |
-| นับเวลา / countdown | — (ต้องแตะเข้าแอปเพื่อพิมพ์) |
+## ภาพรวมสถาปัตยกรรม
 
-> ทุกครั้งที่กดปุ่ม ระบบ reload วิดเจ็ต มีหน่วง ~0.3–1 วิ
+```text
+Flutter app
+  ├─ WidgetBridge (Dart)
+  │    └─ MethodChannel gymmer/widget
+  ├─ SQLite = durable source of truth
+  └─ AppDelegate.swift
+       └─ App Group container
+            ├─ catalog.json       → exercise picker
+            ├─ routines.json      → Start page
+            └─ session.json       ↔ active session
 
----
+GymmerWidget.swift
+  ├─ reads the three JSON snapshots
+  ├─ App Intents mutate session.json
+  └─ LiveSync.refresh() updates the running Live Activity
 
-## แผนผังหน้า (navigation)
-
+Flutter resumes
+  └─ reads a newer widget-authored session.json revision → rebuilds → saves SQLite
 ```
-[1 Start] ──เลือก routine / START──► [4 Log] ◄─ ⋯ ─► [5 Manage]
-    │                                   │ ▲              │
- (No Routine)                          ✓│└── จบ session ─┘
-    ▼                                   │(บันทึก+พัก)
-[2 เพิ่มท่า] ─filter─► [3.1/3.2 Filter] ─เลือก/BACK─► [2]
-    └────────── Done ───────────────────────────────► [4 Log]
-```
 
----
+App Group id ไม่ควร hard-code ตอนติดตั้งจริง เพราะ SideStore อาจ rewrite id
+ระหว่าง re-sign. Runner และ extension จึงอ่าน id ที่ได้รับจริงจาก embedded
+provisioning profile แล้วใช้ resolver เดียวกัน โดยมี
+`group.com.gymmer.gymmerFlutter` เป็น fallback สำหรับ dev/simulator
 
-## หน้า 1 — Start / เลือก Routine
-แสดงเมื่อยังไม่มี session
+## State contract
 
-![Start](images/1-start.png)
+| ไฟล์ | ผู้เขียนหลัก | เนื้อหา |
+|---|---|---|
+| `catalog.json` | Flutter | exercise name/muscle/equipment และ set ล่าสุดสำหรับ autofill |
+| `routines.json` | Flutter | routine name/group และ exercise + set template เต็มชุด |
+| `session.json` | Flutter + widget | active workout, current page/exercise/set, rest timer และ outcome |
 
-| ปุ่ม | การทำงาน |
+Flutter เขียน `session.json` ด้วย `by: "app"` และ `rev` จาก microseconds ส่วน
+widget เขียนด้วย `by: "widget"` และสร้าง `rev` ใหม่ทุก mutation. เมื่อแอป
+กลับมา foreground จะ reconcile เฉพาะ revision ที่ใหม่กว่า revision ล่าสุดที่
+แอปเขียนเอง:
+
+- `active: true` → สร้าง `ActiveWorkout` ใหม่จาก catalog แล้วบันทึก draft ลง
+  SQLite
+- `active: false`, `outcome: "finish"` → สร้าง workout แล้วส่งผ่าน
+  `finishWorkout`
+- `active: false`, `outcome: "discard"` → ล้าง active draft โดยไม่บันทึก history
+
+ชื่อ exercise ถูก match กับ catalog เพื่อคืน media/secondary muscles; ถ้าไม่
+พบจะใช้ exercise แบบ minimal จากข้อมูลใน JSON. บน platform ที่ไม่มี native
+channel การเขียน/อ่านจะ no-op และแอปหลักยังทำงานตามปกติ
+
+## Home Screen Widget — หน้าจริง
+
+ทุก action เป็น App Intent. Action ที่เปลี่ยน session ใช้
+`WStore.saveAndSync` ซึ่งทำสามอย่าง: save, reload widget timeline และ refresh
+Live Activity ถ้ามีอยู่; action ที่เปลี่ยนเฉพาะหน้า/pager ใช้ save ธรรมดา
+
+ปุ่มบน Live Activity ครอบคลุมชุดควบคุมของหน้า Log/Rest ไม่รวม Start, Add,
+Filter หรือ Manage
+
+### 1. Start
+
+- `START · No Routine` สร้าง session เปล่าและเปิดหน้า Add
+- routine card เริ่ม routine พร้อม exercise/set template เต็มชุดและไปหน้า Log
+- pager แสดง routine เป็นชุด ๆ; ไม่มี routine จะแสดงคำแนะนำให้เพิ่มจากแอป
+
+### 2. Add exercise
+
+- exercise แสดงเป็นกริด 2×2, 4 ช่องต่อหน้า
+- แตะ exercise ที่ยังไม่เลือกเพื่อเพิ่ม 1 set และ seed KG/REP จาก history ล่าสุด
+- exercise ที่เลือกแล้วแสดงลำดับและจำนวน set เช่น `1x3`
+- แตะ badge ลด set; แตะส่วนชื่อเพิ่ม set โดย copy ค่าจาก set ล่าสุด
+- ลบ set สุดท้ายจะนำ exercise ออกจาก queue
+- `Done` ไปหน้า Log; pager มีปุ่มขวาปุ่มเดียวและวนกลับหน้าแรกเมื่อถึงท้าย
+
+### 3.1 / 3.2. Filters
+
+- filter กล้ามเนื้อและอุปกรณ์แยกคนละหน้า
+- แสดง chip เป็นกริด 3×3 รวมช่อง `All`; ถ้ามีค่ามากจะแบ่งเป็นหลายหน้า
+- filter ที่เลือกใช้สี accent และ reset list กลับหน้าแรก
+- `BACK` กลับหน้า Add
+
+### 4. Log
+
+หน้าหลักไม่มี text input จึงใช้ stepper:
+
+- REP: ลด/เพิ่มทีละ 1
+- KG: ลด/เพิ่มทีละ 2.5
+- ปุ่ม `›` ไป exercise ถัดไป
+- ปุ่ม `✓` complete set และเลื่อนไป set/exercise ถัดไปตามลำดับ
+- `…` เปิด Manage
+- เมื่อทุก set ครบจะแสดง `จบ session`
+
+### 4b. Rest
+
+- complete set จะเริ่ม rest ตาม `rest` ของ exercise (default 90 วินาที)
+- `−15` / `+15` ปรับเวลาที่เหลือทีละ 15 วินาที
+- `ข้าม` ยกเลิก rest; ถ้าเป็น set สุดท้ายจะแสดง `จบ session`
+- countdown ใช้ SwiftUI `Text(timerInterval:)` จึงไม่ต้องสร้าง timeline
+  รายวินาทีที่อาจชน WidgetKit refresh budget
+- เมื่อ rest หมดจะมี local notification หนึ่งรายการชื่อ `พักครบ 💪` พร้อมเสียง
+  ซึ่งเป็นวิธีที่ใช้แทน background haptic-only API ของ iOS
+
+### 5. Manage
+
+- เพิ่ม/ลบ set ของ exercise ปัจจุบัน
+- เพิ่ม exercise ผ่านหน้า Add หรือลบ exercise ปัจจุบัน
+- กลับ Log
+- `จบ session` และ `Discard`
+
+## Lock Screen Live Activity
+
+Live Activity ถูกประกาศใน `GymmerWidget` bundle และใช้
+`GymmerActivityAttributes` ที่ compile เข้า **ทั้ง Runner และ extension**.
+หน้าใน Live Activity อ่าน `session.json`/`catalog.json` แล้วส่งเข้า
+`GymmerSessionPagesView` ชุดเดียวกับ Home Screen Widget จึงไม่ควรมี layout หรือ
+component แยกจาก widget เว้นแต่ข้อจำกัดของ ActivityKit บังคับ
+
+วงจรชีวิตแบ่งตามข้อจำกัดของ ActivityKit:
+
+1. Flutter foreground เรียก `startLiveActivity` เมื่อมี active workout; ถ้ามี
+   activity อยู่แล้วจะ update แทนการสร้างซ้อน
+2. การแก้ draft จากแอปส่ง state ปัจจุบันไป Runner เพื่อ update
+3. เมื่อแอปอยู่ background ปุ่มบน widget/Live Activity รันใน extension,
+   เขียน `session.json` แล้ว `LiveSync.refresh()` อ่าน state ใหม่มา update
+4. finish/discard เรียก `endLiveActivity` และปิด activity แบบ immediate
+
+State ที่แสดงคือชื่อ routine/session, exercise ปัจจุบัน, `ท่า n/m`, set label,
+KG, REP และ previous. มีสาม phase:
+
+- `add`, `fmuscle`, `fequip`, `log`, `manage` — ใช้ page router เดียวกับ widget
+- `rest` — แสดงจาก `LogView` เมื่อ countdown ทำงาน
+- `done` / `restdone` — ปุ่ม finish ตาม state ของ widget
+
+Lock Screen ใช้ layout สูงประมาณ 158pt. Dynamic Island มี compact/minimal และ
+expanded presentation ขั้นต่ำตาม API; การออกแบบหลักที่ตรวจสอบแล้วคือ Lock
+Screen
+
+## ไฟล์ implementation
+
+| ไฟล์ | หน้าที่ |
 |---|---|
-| `START · No Routine` | เริ่ม session เปล่า → ไปหน้า 2 (เพิ่มท่า) |
-| `Push A / Pull A / Legs …` | แตะเพื่อเริ่มด้วย routine นั้น → ไปหน้า 4 |
-| `›` | พลิกดู routine อื่น |
+| `gymmer_flutter/lib/data/widget_bridge.dart` | serialize catalog/routines/session, Live Activity state, อ่านกลับและ rebuild workout |
+| `gymmer_flutter/ios/Runner/AppDelegate.swift` | MethodChannel, App Group I/O, foreground ActivityKit manager |
+| `gymmer_flutter/ios/Runner/SceneDelegate.swift` | temporary App Group POC launch alert; ต้องลบก่อน release |
+| `gymmer_flutter/ios/GymmerWidget/GymmerWidget.swift` | widget views, App Intents, shared store, notification, Live Activity UI/sync |
+| `gymmer_flutter/ios/GymmerWidget/GymmerActivityAttributes.swift` | shared ActivityKit attributes/content state |
+| `gymmer_flutter/ios/Runner.xcodeproj/project.pbxproj` | WidgetKit target, embed extension, shared source membership |
+| `gymmer_flutter/ios/Runner/Info.plist` | `NSSupportsLiveActivities` และ photo-library permission |
+| `gymmer_flutter/ios/Runner/Runner.entitlements` | Runner App Group entitlement |
+| `gymmer_flutter/ios/GymmerWidget/GymmerWidget.entitlements` | extension App Group entitlement |
 
----
+## ข้อจำกัดและรายการตรวจสอบก่อน release
 
-## หน้า 2 — เพิ่มท่า (Exercise picker)
-ทำในวิดเจ็ตทั้งหมด · ท่าเรียงกริด 2×2
+- Widget รองรับเฉพาะ Medium; ไม่มี scrolling และไม่มี text/number entry
+- Live Activity จะทำงานไม่ได้ถ้าผู้ใช้ปิด Live Activities หรือ OS ไม่รองรับ
+- notification permission ต้องได้รับเพื่อให้ rest-end sound/vibration ทำงาน
+- App Group ต้องถูก grant ให้ทั้ง Runner และ extension หลัง SideStore re-sign
+- ลบ alert `App Group POC v2` จาก `SceneDelegate.swift`
+- ทดสอบบนเครื่องจริง: start จากแอปและ widget, reconcile widget → แอป, complete
+  set/rest, finish, discard, และการ re-sign แล้วข้อมูลเดิมยังอยู่
+- CI มี debug compile check และ release build แต่ยังไม่แทนการทดสอบ widget บน
+  เครื่องจริง
 
-![Add exercise](images/2-add-exercise.png)
+## Mockup เดิม
 
-| ปุ่ม | การทำงาน |
-|---|---|
-| `Chest ▾` / `Dumbbell ▾` | ตัวกรองกล้ามเนื้อ / อุปกรณ์ → เปิดหน้า 3.1 / 3.2 |
-| `‹ ›` | พลิกลิสต์ท่า |
-| การ์ดท่า | แตะเพื่อเพิ่มเข้าเซสชัน — ⊕ จะกลายเป็น **เลขลำดับ** (1, 2, …) |
-| `Done` | จบการเลือก → ไปหน้า 4 |
+ไฟล์ภาพและ HTML ด้านล่างเป็น reference ตอนออกแบบ flow; โค้ดปัจจุบันได้
+implement flow แล้วและมีการปรับ layout Log/Filter ให้ตรงข้อจำกัดของ Medium:
 
----
+- `images/1-start.png` ถึง `images/5-manage.png`
+- `html/1-start.html` ถึง `html/5-manage.html`
+- `gen_widget_images.py`
 
-## หน้า 3.1 — Filter · กล้ามเนื้อ  /  3.2 — Filter · อุปกรณ์
-เปิดจากปุ่มกรองในหน้า 2 · ชิปเต็มพื้นที่ (~12 ตัว/หน้า)
-
-![Filter muscle](images/3.1-filter-muscle.png)
-![Filter equipment](images/3.2-filter-equipment.png)
-
-| ปุ่ม | การทำงาน |
-|---|---|
-| ชิปตัวเลือก | แตะเพื่อกรอง (ที่เลือกอยู่ = เขียว) |
-| `‹ ›` | พลิกดูตัวเลือกเพิ่ม |
-| `BACK` | กลับหน้า 2 |
-
----
-
-## หน้า 4 — Log (หน้าหลัก)
-หน้ากรอกเซ็ต · ไม่มีปุ่มถอยหลัง
-
-![Log](images/4-log.png)
-
-| ปุ่ม | การทำงาน |
-|---|---|
-| `− KG +` | ปรับน้ำหนัก (ทีละ **2.5**) |
-| `− REP +` | ปรับจำนวนครั้ง (ทีละ **1**) |
-| `✓` (เขียว) | **จบเซ็ต** → บันทึก + เด้ง rest timer |
-| `›` | ไปท่าถัดไป |
-| `⋯` | เปิดหน้า Manage |
-
-บรรทัดหัว = ชื่อท่า + `ท่า#/เซ็ต#` + `ครั้งก่อน` (ข้อมูลจริงจาก session ไม่ใช่หัวข้อ)
-
-### หน้า 4 · rest — พักหลังบันทึก
-
-![Rest](images/4b-rest.png)
-
-| ปุ่ม | การทำงาน |
-|---|---|
-| `−15` / `+15` | ลด/เพิ่มเวลาพัก 15 วิ |
-| `ข้าม` | ข้ามการพัก → ไปกรอกเซ็ตถัดไป |
-
----
-
-## หน้า 5 — Manage
-เปิดจาก `⋯` ในหน้า 4 · รวมการจัดการโครงสร้าง + จบเซสชัน
-
-![Manage](images/5-manage.png)
-
-| ปุ่ม | การทำงาน |
-|---|---|
-| `เซ็ต · เพิ่ม / ลบ` | เพิ่ม/ลบเซ็ตของท่าปัจจุบัน |
-| `ท่า · เพิ่ม / ลบ` | เพิ่มท่า (→ หน้า 2) / ลบท่าปัจจุบัน |
-| `จบ session` (เขียว) | จบเวิร์คเอาต์ เก็บผลลง history |
-| `Discard` (แดง) | ทิ้งทั้งเซสชัน ไม่บันทึก |
-| `BACK` | กลับหน้า 4 |
-
----
-
-## การแม็ปข้อมูลจริง (จาก Flutter model)
-
-ทุกค่าที่วิดเจ็ตแสดง ผูกกับฟิลด์จริงในโค้ด (`lib/models/workout.dart`, `exercise.dart`, `routine.dart`):
-
-| ส่วนในวิดเจ็ต | ฟิลด์ |
-|---|---|
-| Routine / เวลาเดิน | `ActiveWorkout.routineName` · `startedAt` |
-| ชื่อท่า / กล้ามเนื้อ / อุปกรณ์ | `Exercise.name` · `muscle` · `equipment` |
-| ค่า KG / REP (autofill) | `WorkoutSet.kg` · `reps` |
-| "ครั้งก่อน 22.5×9" | `WorkoutSet.previousLabel` (จาก history) |
-| เวลาพัก | `WorkoutExercise.restSeconds` |
-| จำนวน/สถานะเซ็ต | `WorkoutExercise.sets[]` · `WorkoutSet.completed` |
-| ตัวกรอง | `Exercise.muscle` · `equipment` |
-| step KG/REP | คงที่ 2.5 / 1 (ตัดหน้า Setting ออกแล้ว) |
-
----
-
-## ข้อค้างคา
-
-1. **ขนาดจริง:** Medium 4×2 ≈ 155pt สูง — หน้า 2 และ Manage แน่น ต้องเลือก Large (4×4) หรือกระชับแถว
-2. **"หน้า 0":** ตีความว่า = กลับหน้า 2 แล้วรีเซ็ตลิสต์ไปหน้าแรก (รอยืนยัน)
-3. ยังไม่เริ่มเขียนโค้ด native — ขั้นต่อไปคือสำรวจ `ios/` (Runner target, App Group, WidgetKit extension)
-
----
-
-## การสร้างรูปใหม่
-
-ไฟล์ HTML ต้นฉบับอยู่ที่ `docs/widget/html/` · รูปที่ `docs/widget/images/`
-สร้างใหม่ด้วยสคริปต์ Chrome-headless (เก็บไว้ใน scratchpad ตอนออกแบบ) — render จาก HTML → PNG @2x
+ภาพ mockup เก่าจึงไม่ใช่ source of truth สำหรับขนาดหรือสถานะ implementation;
+ให้ยึด `GymmerWidget.swift` และเอกสารส่วนบนเป็นหลัก

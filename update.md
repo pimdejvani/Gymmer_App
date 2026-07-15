@@ -3,6 +3,47 @@
 Short log, newest first. Full historic detail is archived in `backup/`
 (gitignored) if ever needed.
 
+## 2026-07-15 — iOS WidgetKit workout logger + Lock Screen Live Activity
+
+Implemented on branch `ios` across the widget commits from `cdea8c8` through
+`e5f2c88`.
+
+- Added the `GymmerWidget` iOS 17 WidgetKit extension, limited to the medium
+  family. It now has the six-page flow: Start, Add, Muscle filter, Equipment
+  filter, Log, and Manage. App Intents power routine start, exercise paging and
+  selection, set +/- controls, KG/REP steppers, next exercise, complete set,
+  rest adjustment/skip, finish, and discard.
+- Flutter now writes `catalog.json`, `routines.json`, and `session.json` to the
+  shared App Group through `WidgetBridge`/`AppDelegate`. The widget writes
+  session changes back with `by: "widget"` and a newer `rev`; Flutter detects
+  those changes on resume, rebuilds the active workout, and persists them to
+  SQLite. The bridge is a no-op outside iOS.
+- Widget-added exercises autofill the most recent completed KG/REP values.
+  Queued picker cells show exercise order and set count; filters are paged
+  3×3, and the exercise list is paged four cells at a time. The Log layout is
+  two rows: REP + next above KG + complete.
+- Completing a widget set starts a rest countdown and schedules one local
+  notification for the end. The widget uses SwiftUI's timer interval so the
+  countdown does not consume per-second WidgetKit timeline entries.
+- Added ActivityKit state shared by Runner and the extension. The foreground
+  app starts/updates/ends one Live Activity; extension App Intents update the
+  running activity while the app is backgrounded. The Lock Screen now reuses
+  the widget's Add/Filter/Log/Rest/Manage pages and controls, omitting only the
+  Start page, including a `restdone` state with a Finish button after the final
+  set.
+- Added runtime App Group discovery from the embedded provisioning profile so
+  the app and extension continue to agree after SideStore rewrites the group
+  identifier. The temporary `App Group POC v2` launch alert remains and is a
+  release cleanup item in `next_step.md`.
+- CI now runs a parallel debug iOS compile check before/alongside the release
+  build, and cancels superseded runs per branch.
+
+## 2026-07-14 — iOS photo permission recorded
+
+- Confirmed `NSPhotoLibraryUsageDescription` is present in the generated iOS
+  Runner plist. The old TODO in the docs was removed; photo picking is no
+  longer an outstanding iOS setup item.
+
 ## 2026-07-10 — iOS platform + free CI build + SideStore sideload pipeline
 
 Done on branch `ios` (not yet merged to `main`).
@@ -52,8 +93,8 @@ Done on branch `ios` (not yet merged to `main`).
   removed. New store method `updateCompletedWorkoutTimes` in both stores.
 - Create/Edit Exercise thumbnail + media now pick from the device photo library
   via `image_picker` (Choose Image / Add Image / Add Video) instead of typing a
-  path or URL. iOS needs `NSPhotoLibraryUsageDescription` once `ios/` is
-  generated (tracked in `next_step.md`).
+  path or URL. `NSPhotoLibraryUsageDescription` is present in the generated
+  iOS Runner plist.
 - Library rows gained a per-row anatomy-still expand (accessibility icon). The
   2D muscle map was intentionally not added to routine/session views.
 - Home: routine folders no longer show a routine-count badge; a routine card's

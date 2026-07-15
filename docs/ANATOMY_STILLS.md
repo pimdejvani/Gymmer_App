@@ -22,7 +22,7 @@ muscles stay light gray from the base still.
 ## How to regenerate layers
 
 ```powershell
-cd flutter_only\gymmer_flutter
+cd gymmer_flutter
 npm install
 npm run plate     # step 1: render the aligned real-colour plate (delts + abs)
 npm run layers    # step 2: build the runtime diff layers
@@ -59,7 +59,7 @@ transparent diff layers for each muscle:
   app) — muscle-focused model with per-group `HL_<Group>` highlight materials,
   used by offline model/still tooling.
 - Built by `tools/build_full_body.js` + `tools/highlight_groups.json` from 4
-  source GLBs which are now archived in `flutter_only/backup/models/`
+  source GLBs which are now archived in `backup/models/`
   (originally from anatomytool.org / Sketchfab). Restore them from backup (or
   re-download) only if full-body.glb itself must be rebuilt.
 - The model is a right hemibody (all meshes `.r`); stills render front

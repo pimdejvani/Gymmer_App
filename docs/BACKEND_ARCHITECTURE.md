@@ -1,5 +1,7 @@
 # GYMMER Local Architecture
 
+Last reviewed: 2026-07-15.
+
 GYMMER does not use a remote backend in the prototype. The backend boundary is an on-device local data layer built with SQLite from Flutter/Dart, plus app-owned file storage for exercise icons and media.
 
 ## Local Boundary
@@ -11,6 +13,9 @@ The local backend boundary is inside the app process:
 - Domain services enforce workout, exercise library, rest timer, and statistics rules.
 - SQLite-backed repositories read and write local data.
 - Media storage copies imported files into app-owned storage and returns relative file metadata.
+- On iOS, `WidgetBridge` mirrors selected state to a WidgetKit extension through
+  an App Group container; this is a local IPC/snapshot boundary, not a remote
+  backend.
 
 Widgets do not own SQL rules.
 
@@ -36,6 +41,20 @@ SQLite stores structured app data:
 - previous set snapshots
 - exercise best set snapshots
 - measurement entries
+
+The iOS companion also uses three JSON snapshots in the App Group container:
+
+- `catalog.json` — exercise picker data plus the latest cross-routine set for
+  widget autofill.
+- `routines.json` — routine names, folders, exercises, and set templates for
+  starting a routine from the widget.
+- `session.json` — the active workout shared by Flutter and the widget. The
+  widget stamps `by: "widget"` and a newer microsecond `rev` when it mutates
+  the file; the app pulls that revision back into SQLite on resume.
+
+The snapshots are disposable projections of SQLite state. The widget can
+operate without the app being foregrounded, but only the Flutter app finishes
+the widget-authored session into completed-history tables after reconciliation.
 
 Exercise thumbnail and media are picked from the device photo library (`image_picker`), then copied into app storage; only the resulting relative path/metadata is persisted. The app does not keep live references to Photos or external file picker locations. Compression and camera capture are out of prototype scope.
 
@@ -64,6 +83,10 @@ Only one active workout session can exist at a time. Starting a new workout whil
 
 Active draft tables are separate from completed history tables because draft data changes frequently while completed history should be immutable source data.
 
+SQLite migration v4 removes leftover prototype seed groups/routines and only
+deletes seed exercises that are not referenced by active or completed history.
+Fresh installs start blank; real user data survives the cleanup migration.
+
 ## Statistics Snapshots
 
 Snapshot tables support fast reads during an active workout:
@@ -88,8 +111,11 @@ columns.
 
 ## CI
 
-GitHub Actions should run Flutter checks from `gymmer_flutter`:
+GitHub Actions runs from `gymmer_flutter`:
 
 - dependency restore
 - static analysis
 - widget and unit tests
+- parallel debug iOS compile check (Runner + WidgetKit extension)
+- release iOS build, unsigned IPA packaging, GitHub Release publication, and
+  SideStore `apps.json` regeneration on branch pushes

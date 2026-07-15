@@ -1,6 +1,6 @@
 # GYMMER Next Step
 
-Date: 2026-07-10. Only genuinely-remaining work lives here — done items get
+Date: 2026-07-15. Only genuinely-remaining work lives here — done items get
 deleted, not checked off. Read `structure_file.md` first for the file map.
 
 Decisions locked 2026-07-08: **free & non-commercial app** (abs NC license
@@ -12,21 +12,34 @@ CONTEXT.md; still no login/social/cloud).
 ## Feature roadmap
 
 No active feature plan files remain in `plans/`. Completed plans live in
-`backup/plans/`; far-future iOS widget notes were removed from the current
-workspace docs until they become actionable.
+`backup/plans/`; the iOS widget work is now active and documented in
+`docs/widget/WIDGET.md`.
 
 ## iOS status
 
 The `ios/` folder is generated, the app icon ships, and CI builds an unsigned
 `.ipa` on every push (`.github/workflows/ios-build.yml` → GitHub Release +
 `apps.json` SideStore source). Distribution today is **free sideload via
-SideStore** — no Mac, no Apple Developer account. See `update.md` (2026-07-10)
-and `README.md` for the pipeline and source URL. Work lives on branch `ios`.
+SideStore** — no Apple Developer account. Work lives on branch `ios`.
+
+The WidgetKit target and Lock Screen Live Activity are implemented on `ios`.
+The medium widget is interactive across Start/Add/Filter/Log/Rest/Manage. The
+Live Activity reuses Add/Filter/Log/Rest/Manage and omits only Start, using the
+same page views and App Intents. Shared state is `catalog.json` +
+`routines.json` + `session.json` in the runtime App Group container.
 
 Remaining iOS items:
 
 - **Merge `ios` → `main`**, then point the SideStore source URL at
   `.../main/apps.json` (more stable than the `ios` branch).
+- Remove the temporary `App Group POC v2` launch alert in
+  `ios/Runner/SceneDelegate.swift` before treating the sideload build as a
+  polished release. Keep runtime App Group discovery used by the app and
+  widget because SideStore can rewrite the group identifier.
+- Test the widget and Live Activity on a real iOS 17 device after each
+  SideStore re-sign. Verify start from app/widget, set completion and rest
+  countdown, widget-to-app reconciliation, finish/discard, and notification
+  permission behavior.
 - Bundle id is `com.gymmer.gymmerFlutter` (flutter-create default). Fine for
   free sideload; revisit only if going to the App Store.
 - Icon note: logo art style (galaxy/neon) vs app theme (true-black minimal) —
@@ -34,7 +47,7 @@ Remaining iOS items:
 
 Only if going to the paid App Store later (not needed for sideload): $99/yr
 Apple Developer account + signing in CI, privacy "nutrition label" + policy URL,
-TestFlight, remove any debug-only UI before archiving.
+TestFlight, and removal of any remaining debug-only UI before archiving.
 
 ## Optional / nice-to-have (not scheduled)
 

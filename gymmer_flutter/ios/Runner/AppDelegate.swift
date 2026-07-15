@@ -86,7 +86,8 @@ enum LiveActivityManager {
       kg: a["kg"] as? String ?? "",
       reps: a["reps"] as? String ?? "",
       prev: a["prev"] as? String,
-      restEndsEpoch: (a["restEndsEpoch"] as? NSNumber)?.doubleValue
+      restEndsEpoch: (a["restEndsEpoch"] as? NSNumber)?.doubleValue,
+      page: a["page"] as? String
     )
   }
 

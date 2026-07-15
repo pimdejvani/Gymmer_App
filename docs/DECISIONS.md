@@ -63,3 +63,32 @@ Native app gestures (long-press drag, swipe-left action buttons) replace the
 old arrow/menu/trash buttons — a gesture and a button for the same action
 never coexist. All colors/typography live in `lib/theme/app_theme.dart`;
 screens must not hardcode colors.
+
+## 11. (2026-07-15) iOS widget uses disposable App Group snapshots
+
+The iOS WidgetKit extension cannot call the Flutter store directly. The app
+therefore writes `catalog.json`, `routines.json`, and `session.json` into the
+shared App Group container. `session.json` is the only bidirectional file:
+widget App Intents write `by: "widget"` plus a monotonic `rev`, and Flutter
+reconciles a newer revision into SQLite when the app resumes. SQLite remains
+the durable source of truth; the JSON files are projections and an IPC
+boundary, not a second database.
+
+The App Group identifier is resolved from the installed provisioning profile at
+runtime because SideStore can rewrite it during re-signing. Both Runner and
+WidgetKit use the same resolver.
+
+## 12. (2026-07-15) Live Activity starts in Runner, updates in the extension
+
+Only the foreground app starts the ActivityKit Live Activity. Flutter sends the
+current workout state through the `gymmer/widget` method channel; Runner starts,
+updates, or ends the activity. When the app is backgrounded, the widget
+extension's App Intents mutate the shared session and call `LiveSync.refresh()`
+to update the running activity. The same App Intents power the home widget and
+Lock Screen controls so both surfaces stay behaviorally aligned.
+
+The companion target is iOS 17 and supports the medium home widget plus Lock
+Screen/Dynamic Island presentations. The Lock Screen deliberately reuses the
+home widget's Add/Filter/Log/Rest/Manage surface and omits only Start. Activity
+controls are best-effort when Live Activities are disabled by the user or
+unavailable on the OS.

@@ -102,6 +102,34 @@ Discard behavior:
 - Always requires confirmation.
 - Saves nothing.
 
+## iOS Widget And Lock Screen Activity
+
+The iOS companion is available on the `ios` branch. It is an iOS 17 medium
+WidgetKit widget with six views/pages:
+
+- Start: start No Routine or page through routines supplied by the app.
+- Add: browse four exercises per page, add/remove an exercise, or adjust the
+  queued set count.
+- Muscle and Equipment filters: choose a filter chip from paged 3×3 cells.
+- Log: adjust REP by 1 or KG by 2.5, move to the next exercise, complete the
+  current set, or open Manage.
+- Manage: add/remove the current set or exercise, finish, discard, or return to
+  Log.
+
+The widget cannot provide text entry or scrolling, so numeric entry is done in
+the Flutter app and paging replaces scrolling. Completing a set starts a local
+notification-backed rest timer; `−15`, `+15`, and Skip are available while it
+runs. The widget's rest countdown uses a self-ticking SwiftUI timer rather than
+per-second WidgetKit timeline entries.
+
+The Lock Screen Live Activity reuses the same Add, Muscle/Equipment Filter,
+Log, Rest, and Manage views as the home widget; only Start is omitted. Its
+controls run the same App Intents as the home widget. The foreground Flutter
+app starts or ends the activity; the extension refreshes it after background
+mutations.
+
+This companion is iOS-only and does not change the Android/web feature scope.
+
 ## Completed Sets And Autofill
 
 A set qualifies as completed only when checked.

@@ -300,7 +300,7 @@ struct NavIntent: AppIntent {
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     s.ui.page = page
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -351,7 +351,7 @@ struct RoutinePageIntent: AppIntent {
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     s.ui.routinePage = max(0, s.ui.routinePage + delta)
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -424,7 +424,7 @@ struct ListPageIntent: AppIntent {
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     s.ui.listPage = max(0, s.ui.listPage + delta)
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -437,7 +437,7 @@ struct FilterPageIntent: AppIntent {
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     s.ui.filterPage = max(0, s.ui.filterPage + delta)
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -454,7 +454,7 @@ struct SelectFilterIntent: AppIntent {
     if kind == "muscle" { s.ui.muscleFilter = v } else { s.ui.equipFilter = v }
     s.ui.listPage = 0
     s.ui.page = "add"
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -693,7 +693,8 @@ enum LiveSync {
       kg: set?.kg ?? "",
       reps: set?.reps ?? "",
       prev: set?.prev,
-      restEndsEpoch: restEpoch
+      restEndsEpoch: restEpoch,
+      page: s.ui.page
     )
   }
 
@@ -1270,16 +1271,25 @@ private struct ManageView: View {
 struct GymmerWidgetEntryView: View {
   var entry: GymmerEntry
   var body: some View {
-    router
+    GymmerSessionPagesView(entry: entry, showStart: true)
       .padding(12)
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       .containerBackground(T.bg, for: .widget)
   }
+}
 
-  @ViewBuilder private var router: some View {
+private struct GymmerSessionPagesView: View {
+  var entry: GymmerEntry
+  var showStart: Bool
+
+  @ViewBuilder var body: some View {
     let s = entry.session
     if !s.active {
-      StartView(entry: entry)
+      if showStart {
+        StartView(entry: entry)
+      } else {
+        Color.clear
+      }
     } else {
       switch s.ui.page {
       case "add": AddView(entry: entry)
@@ -1314,18 +1324,16 @@ struct GymmerBundle: WidgetBundle {
   }
 }
 
-// MARK: - Live Activity (Lock Screen mirror of the Log / Rest pages)
+// MARK: - Live Activity (same pages as the widget, without Start)
 
 // iPhone 12 Pro has no Dynamic Island, so only the Lock Screen presentation is
 // designed here; the dynamicIsland closure is a minimal placeholder the API
-// still requires. Phase 2: the buttons run the same App Intents as the home
-// widget (they execute in this extension), then LiveSync.refresh() mirrors the
-// new session.json back onto the activity.
+// still requires. The Lock Screen uses the same Add/Filter/Log/Manage views and
+// App Intents as the home widget; only the Start page is omitted.
 struct GymmerLiveActivity: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: GymmerActivityAttributes.self) { context in
-      LiveLockScreen(state: context.state, title: context.attributes.title, isStale: context.isStale)
-        .padding(14)
+      LiveActivityEntryView(state: context.state, title: context.attributes.title)
         .activityBackgroundTint(T.bg)
         .activitySystemActionForegroundColor(T.textPrimary)
     } dynamicIsland: { context in
@@ -1348,146 +1356,25 @@ struct GymmerLiveActivity: Widget {
   }
 }
 
-private struct LiveLockScreen: View {
+private struct LiveActivityEntryView: View {
   let state: GymmerActivityAttributes.ContentState
   let title: String
-  var isStale: Bool = false
 
   var body: some View {
-    Group {
-      // isStale flips at staleDate (= rest end), so an elapsed rest falls back
-      // to the log/done layout without waiting for the next interaction.
-      if state.phase.hasPrefix("rest"), let end = state.restEnds, !isStale {
-        restBody(end, allDone: state.phase == "restdone")
-      } else if state.phase == "done" || state.phase == "restdone" {
-        doneBody
-      } else {
-        logBody
-      }
-    }
-    .frame(maxWidth: .infinity, minHeight: 158, alignment: .top)
-  }
-
-  private var header: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 6) {
-      Text(title).font(.system(size: 13, weight: .heavy)).foregroundColor(T.accent).lineLimit(1)
-      Text(state.exName.isEmpty ? "ยังไม่มีท่า" : state.exName)
-        .font(.system(size: 14, weight: .bold)).foregroundColor(T.textPrimary).lineLimit(1)
-      Spacer(minLength: 0)
-      Text("ท่า \(state.exIndex)/\(state.exCount) · \(state.setLabel)")
-        .font(.system(size: 10)).foregroundColor(T.textSecondary).lineLimit(1)
-    }
-  }
-
-  private var logBody: some View {
-    VStack(alignment: .leading, spacing: 7) {
-      header
-      HStack(spacing: 7) {
-        stepper(label: "REP", value: state.reps.isEmpty ? "0" : state.reps,
-                down: AdjustIntent(field: "rep", delta: -1),
-                up: AdjustIntent(field: "rep", delta: 1))
-        squareBtn("chevron.right", bg: T.surfaceHigh, fg: T.textPrimary, intent: NextExerciseIntent())
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      HStack(spacing: 7) {
-        stepper(label: "KG", value: state.kg.isEmpty ? "0" : state.kg,
-                down: AdjustIntent(field: "kg", delta: -2.5),
-                up: AdjustIntent(field: "kg", delta: 2.5))
-        squareBtn("checkmark", bg: T.accent, fg: .black, intent: CompleteSetIntent())
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      Text((state.prev?.isEmpty == false) ? state.prev! : "ไม่มีข้อมูลก่อนหน้า")
-        .font(.system(size: 10)).foregroundColor(T.textTertiary).lineLimit(1)
-    }
-  }
-
-  private var doneBody: some View {
-    VStack(alignment: .leading, spacing: 7) {
-      header
-      Button(intent: FinishSessionIntent()) {
-        HStack(spacing: 6) {
-          Image(systemName: "flag.checkered")
-          Text("จบ session").font(.system(size: 15, weight: .bold))
-        }
-        .foregroundColor(.black)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(T.accent)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-      }.buttonStyle(.plain)
-    }
-  }
-
-  private func restBody(_ end: Date, allDone: Bool) -> some View {
-    VStack(alignment: .leading, spacing: 7) {
-      header
-      Spacer(minLength: 0)
-      HStack(spacing: 10) {
-        Image(systemName: "hourglass").font(.system(size: 18)).foregroundColor(T.accent)
-        Text("พัก").font(.system(size: 16, weight: .bold)).foregroundColor(T.textPrimary)
-        Spacer(minLength: 0)
-        Text(timerInterval: Date()...max(end, Date().addingTimeInterval(1)), countsDown: true)
-          .font(.system(size: 36, weight: .heavy, design: .rounded)).monospacedDigit()
-          .foregroundColor(T.accent).multilineTextAlignment(.trailing)
-          .frame(maxWidth: 150)
-      }
-      Spacer(minLength: 0)
-      HStack(spacing: 7) {
-        restPill("−15", bg: T.surfaceHigh, fg: T.textPrimary, intent: RestAdjustIntent(-15))
-        restPill("+15", bg: T.surfaceHigh, fg: T.textPrimary, intent: RestAdjustIntent(15))
-        if allDone {
-          restPill("จบ session", bg: T.accent, fg: .black, intent: FinishSessionIntent())
-        } else {
-          restPill("ข้าม", bg: T.accent, fg: .black, intent: SkipRestIntent())
-        }
-      }
-      .frame(height: 36)
-    }
-  }
-
-  // Horizontal stepper: [ − ] [ label / value ] [ + ], filling its row height.
-  private func stepper(label: String, value: String, down: some AppIntent, up: some AppIntent) -> some View {
-    HStack(spacing: 6) {
-      stepBtn("minus", intent: down)
-      VStack(spacing: 0) {
-        Text(label).font(.system(size: 9, weight: .semibold)).foregroundColor(T.textTertiary)
-        Text(value).font(.system(size: 19, weight: .heavy, design: .rounded))
-          .foregroundColor(T.textPrimary).lineLimit(1).minimumScaleFactor(0.6)
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      stepBtn("plus", intent: up)
-    }
-    .padding(.horizontal, 5).padding(.vertical, 4)
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(T.surface)
-    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-  }
-
-  private func stepBtn(_ icon: String, intent: some AppIntent) -> some View {
-    Button(intent: intent) {
-      Image(systemName: icon)
-        .font(.system(size: 14, weight: .bold)).foregroundColor(T.textPrimary)
-        .frame(width: 40).frame(maxHeight: .infinity)
-        .background(T.surfaceHigh)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }.buttonStyle(.plain)
-  }
-
-  private func squareBtn(_ icon: String, bg: Color, fg: Color, intent: some AppIntent) -> some View {
-    Button(intent: intent) {
-      Image(systemName: icon)
-        .font(.system(size: 17, weight: .heavy)).foregroundColor(fg)
-        .frame(width: 48).frame(maxHeight: .infinity)
-        .background(bg)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }.buttonStyle(.plain)
-  }
-
-  private func restPill(_ label: String, bg: Color, fg: Color, intent: some AppIntent) -> some View {
-    Button(intent: intent) {
-      Text(label).font(.system(size: 14, weight: .bold)).foregroundColor(fg)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(bg)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }.buttonStyle(.plain)
+    let stored = WStore.loadSession()
+    var session = stored
+    session.active = true
+    session.sessionName = session.sessionName ?? title
+    session.ui.page = state.page ?? "log"
+    let entry = GymmerEntry(
+      date: Date(),
+      session: session,
+      catalog: WStore.catalog(),
+      routines: []
+    )
+    GymmerSessionPagesView(entry: entry, showStart: false)
+      .padding(12)
+      .frame(maxWidth: .infinity, minHeight: 158, alignment: .topLeading)
+      .background(T.bg)
   }
 }

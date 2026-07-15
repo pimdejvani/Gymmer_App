@@ -34,7 +34,19 @@ Install on an iPhone (one-time), all free:
    won't auto-update). Enable **Background Refresh** so it re-signs every 7 days.
 
 App regenerate helpers: `dart run flutter_launcher_icons` (app icon from
-`assets/Gymmer_Logo.png`). See `update.md` (2026-07-10) for full detail.
+`assets/Gymmer_Logo.png`). See `update.md` (2026-07-15) for the current log.
+
+## iOS widget and Lock Screen activity
+
+The `ios` branch includes a WidgetKit medium widget and an interactive Lock
+Screen Live Activity. Both use the App Group shared container; the Flutter app
+writes the exercise catalog, routines, and active-session snapshot, while the
+widget extension can mutate the session and the app reconciles those changes
+back into SQLite on resume. The widget requires iOS 17. The Live Activity uses
+the same Add/Filter/Log/Rest/Manage surface as the widget, without Start; it is
+started/ended by the foreground app and updated by the extension's App Intents.
+See [`docs/widget/WIDGET.md`](docs/widget/WIDGET.md) for the state contract,
+pages, and known release checks.
 
 ## Docs — start here
 
@@ -48,3 +60,4 @@ App regenerate helpers: `dart run flutter_launcher_icons` (app icon from
 | [docs/BACKEND_ARCHITECTURE.md](docs/BACKEND_ARCHITECTURE.md) | DB architecture |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture decisions |
 | [docs/ANATOMY_STILLS.md](docs/ANATOMY_STILLS.md) | Anatomy stills pipeline + licensing |
+| [docs/widget/WIDGET.md](docs/widget/WIDGET.md) | iOS widget + Live Activity implementation |

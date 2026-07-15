@@ -1,5 +1,7 @@
 # GYMMER Context
 
+Last reviewed: 2026-07-15 (`ios` branch, after Live Activity phase 2).
+
 GYMMER is a single-user offline workout tracker. Flutter only; the Swift
 project at repo root is dead legacy.
 
@@ -51,8 +53,9 @@ iteration). Desktop is out of scope.
   in-memory store on web. DB audit fully passed — #2/#3/#5–#8 by tests,
   #1/#4 verified on a real device (Galaxy S22 Ultra, 2026-07-08: clean
   install + draft survives Force Stop).
-- Release target: iOS (needs a Mac for build steps); Android is a dev
-  stand-in only — no Play release, no Android signing.
+- Release target: iOS. The repository can generate platform files on Windows
+  and CI builds the unsigned IPA on macOS; local Xcode/device work still needs
+  a Mac. Android is a dev stand-in only — no Play release or Android signing.
 - Library tab + exercise picker have a name search field and per-exercise
   favorite star (favorites sort first; `exercises.is_favorite`, schema v2).
 - 3 bottom-nav tabs live: Workout / Library / Profile. Profile shows a
@@ -65,11 +68,21 @@ iteration). Desktop is out of scope.
   the duration and every exercise's sets, with a live session set summary
   (no add/remove exercise). Per-exercise set edits are also reachable from
   Exercises → stats.
+- iOS companion is implemented on branch `ios`: a WidgetKit medium widget
+  provides a six-page workout flow (Start, Add, Muscle/Equipment filters, Log,
+  Manage) and reads/writes the active session through the App Group container.
+  The Lock Screen Live Activity reuses the widget's Add, Muscle/Equipment
+  Filter, Log, Rest, and Manage pages (without Start) and the same controls.
+- Widget state is shared through `catalog.json`, `routines.json`, and
+  `session.json`. The Flutter app reconciles widget-authored `session.json`
+  revisions into SQLite when it resumes; widget/native failures are ignored on
+  non-iOS platforms.
 - Library rows can expand to show the exercise's anatomy still; a routine
   card's exercise-count chip expands its exercise list (name + set count);
   routine folders no longer show a routine-count badge.
 - Delts/abs anatomy layers are rebuilt from an aligned real-colour plate (real
   fibre texture, no projection mismatch); see `docs/ANATOMY_STILLS.md`.
-- Verification: `flutter analyze` clean, `flutter test` (65 tests), and
-  `flutter build web` all pass (2026-07-10).
+- Verification last recorded: `flutter analyze` clean, `flutter test` (65
+  tests), and `flutter build web` all pass (2026-07-10). iOS CI now also has a
+  parallel debug compile check for the Runner + WidgetKit extension.
 - File layout: see `structure_file.md` (read that first each session).

@@ -1,7 +1,7 @@
 # GYMMER Structure Map
 
 Read THIS FILE FIRST every session. It tells you which files to read for a
-given task — read only those. Last updated: 2026-07-10.
+given task — read only those. Last updated: 2026-07-15.
 
 App code root: `gymmer_flutter/lib/`. Run commands from `gymmer_flutter/`
 with `C:\Users\pimde\develop\flutter\bin\flutter.bat` (not on PATH).
@@ -48,11 +48,12 @@ flutter.bat run -d chrome                     # run the app
 | `lib/data/workout_store_factory.dart` | Conditional import: picks sqlite (io) or memory (web) |
 | `lib/data/seed_data.dart` | Seed exercises/routines. Anatomy rendering now uses `muscleMapNames`; seed exercise combo parsing is no longer required |
 | `lib/data/media_storage*.dart` | Copy exercise media into app-owned storage (io/stub pair) |
+| `lib/data/widget_bridge.dart` | iOS App Group bridge: writes catalog/routines/session JSON, starts or ends the Live Activity, and rebuilds widget-authored sessions on resume |
 
 ### Screens (stateful pages; own store calls + dialogs)
 | File | Contents |
 |---|---|
-| `lib/screens/workout_home_screen.dart` | GymmerHome: app shell (bottom nav Workout/Library), store lifecycle, resume bar, all routine/folder mutations, drag auto-scroll |
+| `lib/screens/workout_home_screen.dart` | GymmerHome: app shell (bottom nav Workout/Library/Profile), store lifecycle, resume bar, all routine/folder mutations, widget sync/reconciliation, drag auto-scroll |
 | `lib/screens/active_workout_page.dart` | Active session page: reorder/swipe exercise list, set complete + rest pill, finish/discard |
 | `lib/screens/routine_builder_page.dart` | Routine editor: name/folder fields + reorderable exercise list + ExerciseEditorCard |
 | `lib/screens/exercise_library_page.dart` | Library tab: search field + exercise list rows + favorite star + per-row anatomy-still expand (accessibility icon). Exports `filterAndSortExercises` / `ExerciseSearchField` (reused by picker) |
@@ -87,6 +88,16 @@ flutter.bat run -d chrome                     # run the app
 | `lib/widgets/profile/dashboard_grid.dart` | 2-col grid of dashboard buttons (dumb list of DashboardEntry icon/label/onTap) |
 | `lib/widgets/profile/month_grid.dart` | One month grid (Sunday-first); workout day = filled circle + tiny label, today = outlined. Pure display |
 
+### iOS native companion
+| File | Contents |
+|---|---|
+| `ios/GymmerWidget/GymmerWidget.swift` | iOS 17 medium WidgetKit widget: Start/Add/Filter/Log/Manage pages, App Intents, rest notification, shared JSON store, and Live Activity rendering that reuses Add/Filter/Log/Rest/Manage |
+| `ios/GymmerWidget/GymmerActivityAttributes.swift` | ActivityKit attributes/state shared by Runner and WidgetKit targets |
+| `ios/Runner/AppDelegate.swift` | Flutter method channel for App Group files plus foreground Live Activity start/update/end |
+| `ios/Runner/SceneDelegate.swift` | Temporary App Group provisioning probe; remove the launch alert before release, keep runtime group discovery in AppDelegate/widget |
+| `ios/Runner/Info.plist` | Photo-library permission and `NSSupportsLiveActivities` declarations |
+| `ios/Runner/Runner.entitlements` / `ios/GymmerWidget/GymmerWidget.entitlements` | App Group entitlement requested by both targets; SideStore may rewrite the installed identifier |
+
 ### Tests
 | File | Contents |
 |---|---|
@@ -115,9 +126,9 @@ flutter.bat run -d chrome                     # run the app
 |---|---|
 | `.github/workflows/ios-build.yml` | CI on push to main/ios: builds unsigned iOS on a free `macos-15` runner, packages `Gymmer.ipa`, publishes a GitHub Release (`build-<run>`) + regenerates `apps.json`. Build number = run number → version auto-bumps to `1.0.<run>` |
 | `apps.json` (repo root) | SideStore/AltStore source manifest → latest Release `.ipa`. Committed back by CI. Device subscribes for free OTA auto-updates. Source URL: `https://raw.githubusercontent.com/pimdejvani/Gymmer_App/ios/apps.json` |
-| `gymmer_flutter/ios/` | Generated iOS platform (bundle id `com.gymmer.gymmerFlutter`). `flutter_launcher_icons` config + `assets/Gymmer_Logo.png` drive the app icon. `NSPhotoLibraryUsageDescription` still TODO — see `next_step.md` |
+| `gymmer_flutter/ios/` | Generated iOS platform (bundle id `com.gymmer.gymmerFlutter`) plus the WidgetKit target. `flutter_launcher_icons` config + `assets/Gymmer_Logo.png` drive the app icon; photo permission and Live Activities are declared in `Runner/Info.plist` |
 
-Full sideload/CI walkthrough: `update.md` (2026-07-10) + `README.md`.
+Full sideload/CI walkthrough: `update.md` (2026-07-15) + `README.md`.
 
 ## How things connect
 
@@ -136,6 +147,14 @@ screens → data/workout_store.dart (interface) ← workout_store_factory.dart
              ├─ workout_store_sqlite.dart (io) ─┐ both call
              └─ workout_store_memory.dart (web) ┘ domain/finish_workout_service.dart
 models.dart (barrel) ← everyone
+
+Flutter app ↔ AppDelegate.swift ↔ App Group container
+                         ├─ catalog.json / routines.json (widget read snapshots)
+                         └─ session.json (shared active session; widget writes are
+                            reconciled into SQLite when Flutter resumes)
+
+Runner foreground → starts/updates/ends Live Activity
+Widget extension App Intents → mutates session.json → refreshes Live Activity
 ```
 
 State flows down as constructor params; mutations flow up as callbacks to
@@ -152,6 +171,7 @@ GymmerHome (or page state), which persists via the store then reloads.
 - **DB / persistence** → `docs/BACKEND_ARCHITECTURE.md`, `docs/DECISIONS.md`, `lib/data/`, `lib/domain/`.
 - **Muscle map drawing** → `widgets/body_muscle_painter.dart`.
 - **Anatomy rendering wrong/missing** → `docs/ANATOMY_STILLS.md` + `widgets/exercise_anatomy_panel.dart` + `tools/render_muscle_layers.js`.
+- **iOS widget / Live Activity** → `docs/widget/WIDGET.md` + `lib/data/widget_bridge.dart` + `ios/GymmerWidget/GymmerWidget.swift` + `ios/Runner/AppDelegate.swift`.
 - **Product behavior question** → `CONTEXT.md`, then `docs/FUNCTIONS.md`.
 - **What to do next** → `next_step.md`.
 
@@ -170,6 +190,7 @@ GymmerHome (or page state), which persists via the store then reloads.
 - `docs/BACKEND_ARCHITECTURE.md` — DB schema/architecture
 - `docs/DECISIONS.md` — merged architecture decisions (was docs/adr/)
 - `docs/ANATOMY_STILLS.md` — stills pipeline + asset licensing (IMPORTANT before commercial release)
+- `docs/widget/WIDGET.md` — iOS widget + Live Activity state contract and current behavior
 - `backup/` — archived files (gitignored): old docs, source glbs, superseded parent next_step/update
 
 Old Swift project at repo root (`GYMMER/`, `GYMMER.xcodeproj`) is legacy — never read it.

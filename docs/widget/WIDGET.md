@@ -177,6 +177,9 @@ Lock Screen. iPhone ที่ไม่มี Dynamic Island ไม่มี Live
 - Widget รองรับเฉพาะ Medium; ไม่มี scrolling และไม่มี text/number entry
 - Live Activity จะทำงานไม่ได้ถ้าผู้ใช้ปิด Live Activities หรือ OS ไม่รองรับ
 - iPhone ที่ไม่มี Dynamic Island แสดง Live Activity แบบ persistent เฉพาะ Lock Screen
+- CI ไม่ทำ debug และ release compile ซ้ำใน event เดียว: PR ใช้ debug compile,
+  push/manual ใช้ release build และ cache `build/ios`; การแก้เฉพาะเอกสารไม่
+  trigger iOS build
 - notification permission ต้องได้รับเพื่อให้ rest-end sound/vibration ทำงาน
 - App Group ต้องถูก grant ให้ทั้ง Runner และ extension หลัง SideStore re-sign
 - ลบ alert `App Group POC v2` จาก `SceneDelegate.swift`

@@ -8,9 +8,16 @@ name: iOS build
 on:
   push:
     branches: [main, ios]
-    paths-ignore: [apps.json]   # avoid a loop: the apps.json commit-back below
+    paths:
+      - '.github/workflows/ios-build.yml'
+      - 'gymmer_flutter/**'
+      - '!gymmer_flutter/**/*.md'
   pull_request:
     branches: [main]
+    paths:
+      - '.github/workflows/ios-build.yml'
+      - 'gymmer_flutter/**'
+      - '!gymmer_flutter/**/*.md'
   workflow_dispatch:
 
 permissions:
@@ -23,12 +30,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Fast, parallel red/green on whether the Swift widget + Dart still COMPILE.
-  # A debug build skips the slow release AOT, so this finishes well before the
-  # full release job below — giving early feedback while that keeps running for
-  # the actual on-device update. Does NOT publish anything.
+  # Fast PR red/green on whether the Swift widget + Dart still compile. Pushes
+  # skip this duplicate build and go directly to the release/IPA job below.
   compile-check:
     name: Fast compile check (debug)
+    if: github.event_name == 'pull_request'
     runs-on: macos-15
     defaults:
       run:
@@ -48,10 +54,11 @@ jobs:
         run: flutter pub get
 
       - name: Build iOS (debug, no codesign) — compiles Swift widget + Dart
-        run: flutter build ios --debug --no-codesign
+        run: flutter build ios --debug --no-codesign --no-pub
 
   build-ios:
     name: Build unsigned iOS app
+    if: github.event_name != 'pull_request'
     runs-on: macos-15
     defaults:
       run:
@@ -71,13 +78,24 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # Preserve Xcode/Flutter intermediates between hosted runners. Xcode still
+      # validates source inputs and rebuilds changed files; final IPA packaging
+      # always removes the previous archive before creating a new one.
+      - name: Restore incremental iOS build cache
+        uses: actions/cache@v5
+        with:
+          path: gymmer_flutter/build/ios
+          key: ios-release-v1-${{ runner.os }}-${{ runner.arch }}-flutter-3.44.4-${{ hashFiles('gymmer_flutter/pubspec.lock', 'gymmer_flutter/ios/Podfile.lock', 'gymmer_flutter/ios/Runner.xcodeproj/project.pbxproj') }}
+          restore-keys: |
+            ios-release-v1-${{ runner.os }}-${{ runner.arch }}-flutter-3.44.4-
+
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze --no-pub
 
       # Build number = CI run number so each push produces a higher version that
       # iOS/SideStore recognises as an update.
       - name: Build iOS (no codesign)
-        run: flutter build ios --release --no-codesign --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
+        run: flutter build ios --release --no-codesign --no-pub --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
 
       # Ad-hoc sign so each binary carries its App Group request; SideStore
       # re-signs on device and re-provisions those groups. Sign nested code
@@ -105,9 +123,10 @@ jobs:
       - name: Package unsigned IPA
         working-directory: gymmer_flutter/build/ios/iphoneos
         run: |
+          rm -rf Payload Gymmer.ipa
           mkdir -p Payload
           cp -R Runner.app Payload/
-          zip -r9 Gymmer.ipa Payload
+          zip -qr6 Gymmer.ipa Payload
           rm -rf Payload
 
       - name: Upload IPA artifact

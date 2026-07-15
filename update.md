@@ -42,6 +42,10 @@ Implemented on branch `ios` across the widget commits from `cdea8c8` through
   The expanded Dynamic Island now reuses the Lock Screen's interactive pages;
   phones without Dynamic Island use the Home Screen widget for persistent
   unlocked controls.
+- Shortened iOS CI by running debug compile only for pull requests and release
+  packaging only for pushes/manual runs, skipping docs-only changes, restoring
+  incremental `build/ios` data, avoiding repeated pub resolution, and using
+  faster IPA compression.
 
 ## 2026-07-14 — iOS photo permission recorded
 

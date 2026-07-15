@@ -317,7 +317,7 @@ struct StartEmptyIntent: AppIntent {
     s.startedAt = ISO8601DateFormatter().string(from: Date())
     s.exercises = []
     s.ui.page = "add"
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -338,7 +338,7 @@ struct StartRoutineIntent: AppIntent {
     s.exercises = WStore.routines().first(where: { $0.name == name })?.exercises ?? []
     s.curEx = 0
     s.ui.page = s.exercises.isEmpty ? "add" : "log"
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -373,7 +373,7 @@ struct AddExerciseIntent: AppIntent {
       ex.sets = [WSet(kg: item.prevKg, reps: item.prevReps, prev: item.prev)] // seed from history
       s.exercises.append(ex)
     }
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -389,7 +389,7 @@ struct PickerAddSetIntent: AppIntent {
     guard let i = s.exercises.firstIndex(where: { $0.name == name }) else { return .result() }
     let last = s.exercises[i].sets.last
     s.exercises[i].sets.append(WSet(kg: last?.kg ?? "", reps: last?.reps ?? "", prev: last?.prev))
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -411,7 +411,7 @@ struct PickerRemoveSetIntent: AppIntent {
       let cap = s.exercises[i].sets.count - 1
       if s.exercises[i].curSet > cap { s.exercises[i].curSet = cap }
     }
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -481,7 +481,7 @@ struct AdjustIntent: AppIntent {
       ex.sets[si].reps = String(v)
     }
     s.exercises[ei] = ex
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -511,7 +511,7 @@ struct CompleteSetIntent: AppIntent {
     s.ui.restDur = ex.rest
     s.ui.restEndsAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(Double(ex.rest)))
     RestNotify.schedule(after: ex.rest)
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -522,7 +522,7 @@ struct NextExerciseIntent: AppIntent {
     var s = WStore.loadSession()
     guard !s.exercises.isEmpty else { return .result() }
     s.curEx = (s.safeExIndex + 1) % s.exercises.count
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -540,7 +540,7 @@ struct RestAdjustIntent: AppIntent {
     let newRemaining = max(0, base + delta)
     s.ui.restEndsAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(Double(newRemaining)))
     RestNotify.schedule(after: newRemaining)
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -551,7 +551,7 @@ struct SkipRestIntent: AppIntent {
     var s = WStore.loadSession()
     s.ui.restEndsAt = nil // curSet was already advanced when the set completed
     RestNotify.cancel()
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -568,7 +568,7 @@ struct AddSetIntent: AppIntent {
     let last = ex.sets.last
     ex.sets.append(WSet(kg: last?.kg ?? "", reps: last?.reps ?? "", prev: last?.prev))
     s.exercises[ei] = ex
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -585,7 +585,7 @@ struct RemoveSetIntent: AppIntent {
       ex.curSet = min(ex.curSet, ex.sets.count - 1)
     }
     s.exercises[ei] = ex
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -598,7 +598,7 @@ struct RemoveExerciseIntent: AppIntent {
     s.exercises.remove(at: s.safeExIndex)
     if s.curEx >= s.exercises.count { s.curEx = max(0, s.exercises.count - 1) }
     if s.exercises.isEmpty { s.ui.page = "add" }
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -611,7 +611,7 @@ struct FinishSessionIntent: AppIntent {
     s.outcome = "finish"
     s.ui = WUI()
     RestNotify.cancel()
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -623,7 +623,7 @@ struct DiscardIntent: AppIntent {
     s.active = false
     s.outcome = "discard"
     RestNotify.cancel()
-    WStore.save(s)
+    await WStore.saveAndSync(s)
     return .result()
   }
 }
@@ -660,6 +660,74 @@ func nextIncompleteExercise(_ s: Session, after i: Int) -> Int? {
     if s.exercises[idx].sets.contains(where: { !$0.done }) { return idx }
   }
   return nil
+}
+
+// MARK: - Live Activity sync (extension side)
+
+// Only the foreground app can START an Activity, but this extension can UPDATE
+// and END running ones. Every session-mutating App Intent funnels through
+// WStore.saveAndSync so the Lock Screen mirror tracks edits made from the home
+// widget or the Live Activity itself while the app is backgrounded.
+enum LiveSync {
+  static func contentState(_ s: Session) -> GymmerActivityAttributes.ContentState {
+    let ei = s.safeExIndex
+    let ex = s.currentExercise
+    let si = ex.map { min(max($0.curSet, 0), $0.sets.count - 1) } ?? 0
+    let set = ex?.sets[si]
+    let allLogged = ex?.sets.allSatisfy { $0.done } ?? false
+    let complete = sessionComplete(s)
+    var phase = complete ? "done" : "log"
+    var restEpoch: Double? = nil
+    if let end = restEndDate(s), end.timeIntervalSinceNow > 0 {
+      // "restdone" = resting after the final set: the rest UI swaps ข้าม for
+      // จบ session, and an elapsed (stale) rest falls back to the done layout.
+      phase = complete ? "restdone" : "rest"
+      restEpoch = end.timeIntervalSince1970
+    }
+    return GymmerActivityAttributes.ContentState(
+      phase: phase,
+      exName: ex?.name ?? "",
+      exIndex: s.exercises.isEmpty ? 0 : ei + 1,
+      exCount: s.exercises.count,
+      setLabel: allLogged ? "Done" : "เซ็ต \(si + 1)/\(max(1, ex?.sets.count ?? 1))",
+      kg: set?.kg ?? "",
+      reps: set?.reps ?? "",
+      prev: set?.prev,
+      restEndsEpoch: restEpoch
+    )
+  }
+
+  static func refresh() async {
+    let s = WStore.loadSession()
+    if s.active {
+      let state = contentState(s)
+      // staleDate = rest end: the system re-renders the Live Activity (isStale
+      // flips) exactly when the countdown hits zero, so the view can fall back
+      // to the log layout without any interaction.
+      let content = ActivityContent(state: state, staleDate: state.restEnds)
+      for activity in Activity<GymmerActivityAttributes>.activities {
+        await activity.update(content)
+      }
+    } else {
+      for activity in Activity<GymmerActivityAttributes>.activities {
+        await activity.end(
+          ActivityContent(state: activity.content.state, staleDate: nil),
+          dismissalPolicy: .immediate
+        )
+      }
+    }
+  }
+}
+
+extension WStore {
+  /// Save + mirror onto any running Live Activity, and nudge the home widget —
+  /// a tap on the Live Activity does NOT auto-reload widget timelines the way a
+  /// tap on the widget itself does.
+  static func saveAndSync(_ session: Session) async {
+    save(session)
+    WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
+    await LiveSync.refresh()
+  }
 }
 
 // MARK: - Timeline
@@ -1250,11 +1318,13 @@ struct GymmerBundle: WidgetBundle {
 
 // iPhone 12 Pro has no Dynamic Island, so only the Lock Screen presentation is
 // designed here; the dynamicIsland closure is a minimal placeholder the API
-// still requires. Phase 1 is read-only — interactive buttons come next.
+// still requires. Phase 2: the buttons run the same App Intents as the home
+// widget (they execute in this extension), then LiveSync.refresh() mirrors the
+// new session.json back onto the activity.
 struct GymmerLiveActivity: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: GymmerActivityAttributes.self) { context in
-      LiveLockScreen(state: context.state, title: context.attributes.title)
+      LiveLockScreen(state: context.state, title: context.attributes.title, isStale: context.isStale)
         .padding(14)
         .activityBackgroundTint(T.bg)
         .activitySystemActionForegroundColor(T.textPrimary)
@@ -1281,54 +1351,143 @@ struct GymmerLiveActivity: Widget {
 private struct LiveLockScreen: View {
   let state: GymmerActivityAttributes.ContentState
   let title: String
-  var body: some View {
-    VStack(alignment: .leading, spacing: 9) {
-      HStack(alignment: .firstTextBaseline) {
-        Text(title).font(.system(size: 15, weight: .heavy)).foregroundColor(T.accent).lineLimit(1)
-        Spacer(minLength: 0)
-        Text("ท่า \(state.exIndex)/\(state.exCount)")
-          .font(.system(size: 12)).foregroundColor(T.textSecondary)
-      }
-      Rectangle().fill(T.hairline).frame(height: 1)
+  var isStale: Bool = false
 
-      if state.phase == "rest", let end = state.restEnds {
-        Spacer(minLength: 0)
-        HStack(spacing: 12) {
-          Image(systemName: "hourglass").font(.system(size: 22)).foregroundColor(T.accent)
-          Text("พัก").font(.system(size: 18, weight: .bold)).foregroundColor(T.textPrimary)
-          Spacer(minLength: 0)
-          Text(timerInterval: Date()...max(end, Date().addingTimeInterval(1)), countsDown: true)
-            .font(.system(size: 40, weight: .heavy, design: .rounded)).monospacedDigit()
-            .foregroundColor(T.accent).multilineTextAlignment(.trailing)
-            .frame(maxWidth: 170)
-        }
-        Spacer(minLength: 0)
+  var body: some View {
+    Group {
+      // isStale flips at staleDate (= rest end), so an elapsed rest falls back
+      // to the log/done layout without waiting for the next interaction.
+      if state.phase.hasPrefix("rest"), let end = state.restEnds, !isStale {
+        restBody(end, allDone: state.phase == "restdone")
+      } else if state.phase == "done" || state.phase == "restdone" {
+        doneBody
       } else {
-        HStack(alignment: .firstTextBaseline) {
-          Text(state.exName.isEmpty ? "ยังไม่มีท่า" : state.exName)
-            .font(.system(size: 17, weight: .bold)).foregroundColor(T.textPrimary).lineLimit(1)
-          Spacer(minLength: 0)
-          Text(state.setLabel).font(.system(size: 13, weight: .semibold)).foregroundColor(T.textSecondary)
-        }
-        Spacer(minLength: 0)
-        HStack(spacing: 28) {
-          metric("REP", state.reps.isEmpty ? "0" : state.reps)
-          metric("KG", state.kg.isEmpty ? "0" : state.kg)
-          Spacer(minLength: 0)
-        }
-        Spacer(minLength: 0)
-        Text((state.prev?.isEmpty == false) ? state.prev! : "ไม่มีข้อมูลก่อนหน้า")
-          .font(.system(size: 11)).foregroundColor(T.textTertiary).lineLimit(1)
+        logBody
       }
     }
     .frame(maxWidth: .infinity, minHeight: 158, alignment: .top)
   }
 
-  private func metric(_ label: String, _ value: String) -> some View {
-    VStack(alignment: .leading, spacing: 1) {
-      Text(label).font(.system(size: 10, weight: .semibold)).foregroundColor(T.textTertiary)
-      Text(value).font(.system(size: 32, weight: .heavy, design: .rounded))
-        .foregroundColor(T.textPrimary).lineLimit(1).minimumScaleFactor(0.5)
+  private var header: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 6) {
+      Text(title).font(.system(size: 13, weight: .heavy)).foregroundColor(T.accent).lineLimit(1)
+      Text(state.exName.isEmpty ? "ยังไม่มีท่า" : state.exName)
+        .font(.system(size: 14, weight: .bold)).foregroundColor(T.textPrimary).lineLimit(1)
+      Spacer(minLength: 0)
+      Text("ท่า \(state.exIndex)/\(state.exCount) · \(state.setLabel)")
+        .font(.system(size: 10)).foregroundColor(T.textSecondary).lineLimit(1)
     }
+  }
+
+  private var logBody: some View {
+    VStack(alignment: .leading, spacing: 7) {
+      header
+      HStack(spacing: 7) {
+        stepper(label: "REP", value: state.reps.isEmpty ? "0" : state.reps,
+                down: AdjustIntent(field: "rep", delta: -1),
+                up: AdjustIntent(field: "rep", delta: 1))
+        squareBtn("chevron.right", bg: T.surfaceHigh, fg: T.textPrimary, intent: NextExerciseIntent())
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      HStack(spacing: 7) {
+        stepper(label: "KG", value: state.kg.isEmpty ? "0" : state.kg,
+                down: AdjustIntent(field: "kg", delta: -2.5),
+                up: AdjustIntent(field: "kg", delta: 2.5))
+        squareBtn("checkmark", bg: T.accent, fg: .black, intent: CompleteSetIntent())
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      Text((state.prev?.isEmpty == false) ? state.prev! : "ไม่มีข้อมูลก่อนหน้า")
+        .font(.system(size: 10)).foregroundColor(T.textTertiary).lineLimit(1)
+    }
+  }
+
+  private var doneBody: some View {
+    VStack(alignment: .leading, spacing: 7) {
+      header
+      Button(intent: FinishSessionIntent()) {
+        HStack(spacing: 6) {
+          Image(systemName: "flag.checkered")
+          Text("จบ session").font(.system(size: 15, weight: .bold))
+        }
+        .foregroundColor(.black)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(T.accent)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+      }.buttonStyle(.plain)
+    }
+  }
+
+  private func restBody(_ end: Date, allDone: Bool) -> some View {
+    VStack(alignment: .leading, spacing: 7) {
+      header
+      Spacer(minLength: 0)
+      HStack(spacing: 10) {
+        Image(systemName: "hourglass").font(.system(size: 18)).foregroundColor(T.accent)
+        Text("พัก").font(.system(size: 16, weight: .bold)).foregroundColor(T.textPrimary)
+        Spacer(minLength: 0)
+        Text(timerInterval: Date()...max(end, Date().addingTimeInterval(1)), countsDown: true)
+          .font(.system(size: 36, weight: .heavy, design: .rounded)).monospacedDigit()
+          .foregroundColor(T.accent).multilineTextAlignment(.trailing)
+          .frame(maxWidth: 150)
+      }
+      Spacer(minLength: 0)
+      HStack(spacing: 7) {
+        restPill("−15", bg: T.surfaceHigh, fg: T.textPrimary, intent: RestAdjustIntent(-15))
+        restPill("+15", bg: T.surfaceHigh, fg: T.textPrimary, intent: RestAdjustIntent(15))
+        if allDone {
+          restPill("จบ session", bg: T.accent, fg: .black, intent: FinishSessionIntent())
+        } else {
+          restPill("ข้าม", bg: T.accent, fg: .black, intent: SkipRestIntent())
+        }
+      }
+      .frame(height: 36)
+    }
+  }
+
+  // Horizontal stepper: [ − ] [ label / value ] [ + ], filling its row height.
+  private func stepper(label: String, value: String, down: some AppIntent, up: some AppIntent) -> some View {
+    HStack(spacing: 6) {
+      stepBtn("minus", intent: down)
+      VStack(spacing: 0) {
+        Text(label).font(.system(size: 9, weight: .semibold)).foregroundColor(T.textTertiary)
+        Text(value).font(.system(size: 19, weight: .heavy, design: .rounded))
+          .foregroundColor(T.textPrimary).lineLimit(1).minimumScaleFactor(0.6)
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      stepBtn("plus", intent: up)
+    }
+    .padding(.horizontal, 5).padding(.vertical, 4)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(T.surface)
+    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+  }
+
+  private func stepBtn(_ icon: String, intent: some AppIntent) -> some View {
+    Button(intent: intent) {
+      Image(systemName: icon)
+        .font(.system(size: 14, weight: .bold)).foregroundColor(T.textPrimary)
+        .frame(width: 40).frame(maxHeight: .infinity)
+        .background(T.surfaceHigh)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }.buttonStyle(.plain)
+  }
+
+  private func squareBtn(_ icon: String, bg: Color, fg: Color, intent: some AppIntent) -> some View {
+    Button(intent: intent) {
+      Image(systemName: icon)
+        .font(.system(size: 17, weight: .heavy)).foregroundColor(fg)
+        .frame(width: 48).frame(maxHeight: .infinity)
+        .background(bg)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }.buttonStyle(.plain)
+  }
+
+  private func restPill(_ label: String, bg: Color, fg: Color, intent: some AppIntent) -> some View {
+    Button(intent: intent) {
+      Text(label).font(.system(size: 14, weight: .bold)).foregroundColor(fg)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(bg)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }.buttonStyle(.plain)
   }
 }

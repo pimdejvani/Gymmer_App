@@ -474,6 +474,7 @@ struct SelectFilterIntent: AppIntent {
 @available(iOS 17.0, *)
 struct AdjustIntent: AppIntent {
   static var title: LocalizedStringResource = "Adjust value"
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
   @Parameter(title: "field") var field: String // "kg" | "rep"
   @Parameter(title: "delta") var delta: Double
   init() {}
@@ -500,6 +501,7 @@ struct AdjustIntent: AppIntent {
 @available(iOS 17.0, *)
 struct CompleteSetIntent: AppIntent {
   static var title: LocalizedStringResource = "Complete set"
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     let ei = s.safeExIndex
@@ -531,6 +533,7 @@ struct CompleteSetIntent: AppIntent {
 @available(iOS 17.0, *)
 struct NextExerciseIntent: AppIntent {
   static var title: LocalizedStringResource = "Next exercise"
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     guard !s.exercises.isEmpty else { return .result() }
@@ -630,7 +633,7 @@ struct FinishSessionIntent: AppIntent {
     s.outcome = "finish"
     s.ui = WUI()
     RestNotify.cancel()
-    await WStore.saveAndSync(s)
+    await WStore.saveAndEnd(s)
     return .result()
   }
 }
@@ -643,7 +646,7 @@ struct DiscardIntent: AppIntent {
     s.active = false
     s.outcome = "discard"
     RestNotify.cancel()
-    await WStore.saveAndSync(s)
+    await WStore.saveAndEnd(s)
     return .result()
   }
 }
@@ -731,12 +734,16 @@ enum LiveSync {
         await activity.update(content)
       }
     } else {
-      for activity in Activity<GymmerActivityAttributes>.activities {
-        await activity.end(
-          ActivityContent(state: activity.content.state, staleDate: nil),
-          dismissalPolicy: .immediate
-        )
-      }
+      await endAll()
+    }
+  }
+
+  static func endAll() async {
+    for activity in Activity<GymmerActivityAttributes>.activities {
+      await activity.end(
+        ActivityContent(state: activity.content.state, staleDate: nil),
+        dismissalPolicy: .immediate
+      )
     }
   }
 }
@@ -748,8 +755,17 @@ extension WStore {
   @available(iOS 17.0, *)
   static func saveAndSync(_ session: Session) async {
     save(session)
-    await LiveSync.refresh()
     WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
+    await LiveSync.refresh()
+  }
+
+  /// Terminal actions must redraw the home widget before awaiting ActivityKit.
+  /// Otherwise a slow/missing Activity can make Finish and Discard look stuck.
+  @available(iOS 17.0, *)
+  static func saveAndEnd(_ session: Session) async {
+    save(session)
+    WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
+    await LiveSync.endAll()
   }
 }
 
@@ -1500,6 +1516,94 @@ struct GymmerBundle: WidgetBundle {
   var body: some Widget {
     GymmerWidget()
     GymmerLiveActivity()
+    if #available(iOS 18.0, *) {
+      GymmerCompleteSetControl()
+      GymmerKGUpControl()
+      GymmerKGDownControl()
+      GymmerRepUpControl()
+      GymmerRepDownControl()
+      GymmerNextExerciseControl()
+    }
+  }
+}
+
+// MARK: - System controls (Control Center / Lock Screen / Action button)
+
+@available(iOS 18.0, *)
+struct GymmerCompleteSetControl: ControlWidget {
+  var body: some ControlWidgetConfiguration {
+    StaticControlConfiguration(kind: "com.gymmer.complete-set") {
+      ControlWidgetButton(action: CompleteSetIntent()) {
+        Label("Complete Set", systemImage: "checkmark.circle.fill")
+      }
+    }
+    .displayName("Complete Set")
+    .description("Complete the current workout set.")
+  }
+}
+
+@available(iOS 18.0, *)
+struct GymmerKGUpControl: ControlWidget {
+  var body: some ControlWidgetConfiguration {
+    StaticControlConfiguration(kind: "com.gymmer.kg-up") {
+      ControlWidgetButton(action: AdjustIntent(field: "kg", delta: 2.5)) {
+        Label("KG +2.5", systemImage: "plus.circle")
+      }
+    }
+    .displayName("KG +2.5")
+    .description("Add 2.5 kg to the current set.")
+  }
+}
+
+@available(iOS 18.0, *)
+struct GymmerKGDownControl: ControlWidget {
+  var body: some ControlWidgetConfiguration {
+    StaticControlConfiguration(kind: "com.gymmer.kg-down") {
+      ControlWidgetButton(action: AdjustIntent(field: "kg", delta: -2.5)) {
+        Label("KG −2.5", systemImage: "minus.circle")
+      }
+    }
+    .displayName("KG −2.5")
+    .description("Subtract 2.5 kg from the current set.")
+  }
+}
+
+@available(iOS 18.0, *)
+struct GymmerRepUpControl: ControlWidget {
+  var body: some ControlWidgetConfiguration {
+    StaticControlConfiguration(kind: "com.gymmer.rep-up") {
+      ControlWidgetButton(action: AdjustIntent(field: "rep", delta: 1)) {
+        Label("REP +1", systemImage: "plus.circle")
+      }
+    }
+    .displayName("REP +1")
+    .description("Add one rep to the current set.")
+  }
+}
+
+@available(iOS 18.0, *)
+struct GymmerRepDownControl: ControlWidget {
+  var body: some ControlWidgetConfiguration {
+    StaticControlConfiguration(kind: "com.gymmer.rep-down") {
+      ControlWidgetButton(action: AdjustIntent(field: "rep", delta: -1)) {
+        Label("REP −1", systemImage: "minus.circle")
+      }
+    }
+    .displayName("REP −1")
+    .description("Subtract one rep from the current set.")
+  }
+}
+
+@available(iOS 18.0, *)
+struct GymmerNextExerciseControl: ControlWidget {
+  var body: some ControlWidgetConfiguration {
+    StaticControlConfiguration(kind: "com.gymmer.next-exercise") {
+      ControlWidgetButton(action: NextExerciseIntent()) {
+        Label("Next Exercise", systemImage: "chevron.right.circle")
+      }
+    }
+    .displayName("Next Exercise")
+    .description("Move to the next exercise with an incomplete set.")
   }
 }
 

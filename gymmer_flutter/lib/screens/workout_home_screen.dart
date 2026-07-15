@@ -104,7 +104,12 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
       });
       unawaited(WidgetBridge.writeCatalog(state.exercises, state.history));
       unawaited(WidgetBridge.writeRoutines(state.groups, state.history));
-      _pushSessionToWidget(state.activeWorkout);
+      // A Finish/Discard intent may have written a terminal widget revision
+      // while the app process was terminated. Reconcile it before writing the
+      // SQLite draft back, or startup would resurrect the ended session.
+      await _reconcileWidgetSession();
+      if (!mounted) return;
+      _pushSessionToWidget(activeWorkout);
     } catch (error) {
       if (!mounted) return;
       setState(() {

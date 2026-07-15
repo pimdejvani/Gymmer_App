@@ -77,10 +77,13 @@ iteration). Desktop is out of scope.
   Activity controls use Runner-side `LiveActivityIntent` wrappers that dispatch
   to the same mutation implementations, so the widget keeps its original fast
   path while ActivityKit is refreshed from the app process.
+  On iOS 18+, six system controls expose KG/REP +/−, Complete Set, and Next
+  Exercise in Control Center, the Lock Screen control slots, and Action button.
 - Widget state is shared through `catalog.json`, `routines.json`, and
   `session.json`. The Flutter app reconciles widget-authored `session.json`
   revisions into SQLite when it resumes; widget/native failures are ignored on
-  non-iOS platforms.
+  non-iOS platforms. Startup reconciles a terminal widget revision before
+  writing SQLite draft state back, preventing a finished session from reviving.
 - Library rows can expand to show the exercise's anatomy still; a routine
   card's exercise-count chip expands its exercise list (name + set count);
   routine folders no longer show a routine-count badge.

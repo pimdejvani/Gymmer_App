@@ -97,3 +97,17 @@ policy as a best effort, but iOS owns Lock Screen authorization and may still
 require authentication. Now Playing controls are a separate media-only system.
 A device without Dynamic Island has no persistent unlocked Live Activity
 surface, so the Home Screen widget is the unlocked alternative.
+
+## 13. (2026-07-16) High-frequency workout actions use iOS system Controls
+
+iOS 18 Control Widgets are the appropriate system-owned, non-media surface for
+KG/REP adjustments, Complete Set, and Next Exercise. They reuse the ordinary
+widget mutation intents with `alwaysAllowed` and can be placed by the user in
+Control Center, the Lock Screen control slots, or on the Action button. They do
+not replace the richer Live Activity and are availability-gated so iOS 17 keeps
+the existing widget and Activity behavior.
+
+Finish and Discard persist and request the home-widget redraw before awaiting
+ActivityKit dismissal. App startup must reconcile a newer widget-authored
+terminal revision before pushing the SQLite draft, or an ended workout can be
+accidentally restored.

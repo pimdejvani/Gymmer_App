@@ -50,7 +50,10 @@ use Runner-side `LiveActivityIntent` wrappers and share the same mutations.
 On iPhones without Dynamic Island, use the Home Screen widget for persistent
 unlocked controls; the Live Activity itself is persistent on the Lock Screen.
 iOS can still require authentication for third-party Lock Screen interactions;
-media apps such as YouTube use the separate system Now Playing controls.
+media apps such as YouTube use the separate system Now Playing controls. On
+iOS 18+, Gymmer also provides system Controls for KG/REP +/−, Complete Set, and
+Next Exercise; users can add them to Control Center, Lock Screen control slots,
+or the Action button for direct system-owned access.
 See [`docs/widget/WIDGET.md`](docs/widget/WIDGET.md) for the state contract,
 pages, and known release checks.
 

@@ -130,6 +130,16 @@ Runner-side `LiveActivityIntent` wrappers that call the same mutation code,
 persist the change, update ActivityKit, then reload the home widget. The wrappers
 request `alwaysAllowed`, but iOS may still require Lock Screen authentication.
 
+On iOS 18 and later, Gymmer publishes six system Controls: KG +2.5, KG −2.5,
+REP +1, REP −1, Complete Set, and Next Exercise. People add the controls they
+want to Control Center, the two Lock Screen control slots, or the Action button.
+These controls use the stable extension-side mutation path and do not require
+the app to present media playback.
+
+Finish and Discard write their terminal outcome and reload the home widget
+before awaiting immediate ActivityKit dismissal. A cold app launch reconciles
+that terminal revision before restoring a SQLite draft.
+
 This companion is iOS-only and does not change the Android/web feature scope.
 
 ## Completed Sets And Autofill

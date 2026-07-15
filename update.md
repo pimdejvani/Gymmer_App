@@ -3,6 +3,18 @@
 Short log, newest first. Full historic detail is archived in `backup/`
 (gitignored) if ever needed.
 
+## 2026-07-16 — Reliable session ending + iOS system Controls
+
+- Finish and Discard now persist the terminal revision and reload the Home
+  Widget before awaiting immediate ActivityKit dismissal, so an unavailable or
+  slow Live Activity cannot leave either button visually stuck.
+- Cold startup now reconciles widget-authored state before writing the SQLite
+  draft back to the App Group, preventing a finished/discarded session from
+  being resurrected when the app process had been terminated.
+- Added iOS 18 system Controls for KG/REP +/−, Complete Set, and Next Exercise.
+  Users can place them in Control Center, the Lock Screen control slots, or on
+  the Action button; iOS 17 continues using the existing widget/Live Activity.
+
 ## 2026-07-15 — iOS WidgetKit workout logger + Lock Screen Live Activity
 
 Implemented on branch `ios` across the widget commits from `cdea8c8` through

@@ -8,6 +8,8 @@
 - Home Screen WidgetKit widget: ขนาด **Medium (4×2)** เท่านั้น
 - Live Activity: Lock Screen และ expanded Dynamic Island ใช้หน้า Add / Filter /
   Log / Rest / Manage ชุดเดียวกับ widget โดยตัดเฉพาะหน้า Start
+- System Controls บน iOS 18+: KG/REP +/−, Complete Set และ Next Exercise สำหรับ
+  Control Center, ช่องปุ่ม Lock Screen และ Action button
 
 Widget extension ตั้ง deployment target เป็น iOS 17 เพื่อใช้ interactive
 `Button(intent:)`. Flutter app ยังเป็นแอปหลักและยังรองรับ Android/web ในฐานะ
@@ -147,6 +149,11 @@ component แยกจาก widget เว้นแต่ข้อจำกั�
    ไม่ใช้ invalidation feedback หรือ numeric transition เพราะทำให้เกิดการกระพิบ
 5. finish/discard เรียก `endLiveActivity` และปิด activity แบบ immediate
 
+finish/discard ใช้ terminal flow แยก: บันทึก outcome และขอ reload Home Widget
+ก่อนรอ ActivityKit end เพื่อไม่ให้ปุ่มค้างถ้า ActivityKit ตอบช้า และตอน cold
+launch Flutter จะ reconcile terminal revision ก่อนเขียน draft จาก SQLite กลับ
+ลง App Group จึงไม่ทำให้ session ที่จบแล้วฟื้นกลับมา
+
 State ที่แสดงคือชื่อ routine/session, exercise ปัจจุบัน, `ท่า n/m`, set label,
 KG, REP และ previous. มีสาม phase:
 
@@ -164,6 +171,15 @@ Activity intents ตั้ง `authenticationPolicy = .alwaysAllowed` เพื�
 และอาจยังบังคับ authenticate ตาม security policy ของ Live Activity. ปุ่มของ
 YouTube เป็น system Now Playing controls สำหรับ media playback ซึ่งเป็นคนละ API
 และไม่ควรนำมาใช้ปลอมเป็น workout control
+
+### System Controls (iOS 18+)
+
+Widget bundle ประกาศ `ControlWidgetButton` หกรายการ: KG +2.5, KG −2.5,
+REP +1, REP −1, Complete Set และ Next Exercise. นี่เป็น system surface ที่ตรง
+กับแอปมากกว่า Now Playing: ผู้ใช้เพิ่ม control ที่ต้องการใน Control Center,
+ช่องปุ่ม Lock Screen หรือ Action button ได้เอง และ action reuse `AppIntent`
+เส้นทางเดียวกับ Home Widget พร้อม `alwaysAllowed`. พื้นที่ Lock Screen มีจำนวน
+ช่องจำกัด จึงไม่แทนหน้าเต็มของ Live Activity
 
 ## ไฟล์ implementation
 
@@ -187,6 +203,8 @@ YouTube เป็น system Now Playing controls สำหรับ media playba
 - iOS อาจต้องการ Face ID/passcode ก่อนรันปุ่ม Live Activity แม้ intent ขอ
   `alwaysAllowed`; แอปไม่สามารถ override system Lock Screen policy ได้
 - iPhone ที่ไม่มี Dynamic Island แสดง Live Activity แบบ persistent เฉพาะ Lock Screen
+- System Controls ต้องใช้ iOS 18+ และผู้ใช้ต้องเพิ่มเข้า Control Center/Lock
+  Screen/Action button เอง แอปเพิ่มให้โดยอัตโนมัติไม่ได้
 - CI ไม่ทำ debug และ release compile ซ้ำใน event เดียว: PR ใช้ debug compile,
   push/manual ใช้ release build และ cache `build/ios`; การแก้เฉพาะเอกสารไม่
   trigger iOS build

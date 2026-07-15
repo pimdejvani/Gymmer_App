@@ -26,13 +26,35 @@ class WidgetBridge {
   // ---------------------------------------------------------------------------
 
   /// Writes the exercise catalog the widget's picker reads. The widget derives
-  /// the muscle / equipment filter chips from these entries.
-  static Future<void> writeCatalog(List<Exercise> exercises) async {
+  /// the muscle / equipment filter chips from these entries, and seeds the
+  /// KG/REP of a widget-added exercise from that exercise's most recent set in
+  /// [history] (so it doesn't start at 0).
+  static Future<void> writeCatalog(
+    List<Exercise> exercises,
+    WorkoutHistory history,
+  ) async {
+    // Most recent completed record per exercise (across all routines).
+    final latest = <String, CompletedSetRecord>{};
+    for (final r in history.records) {
+      final cur = latest[r.exerciseName];
+      if (cur == null || r.completedAt.isAfter(cur.completedAt)) {
+        latest[r.exerciseName] = r;
+      }
+    }
     final payload = <String, Object?>{
       'updatedAt': DateTime.now().toIso8601String(),
       'exercises': [
         for (final e in exercises)
-          {'name': e.name, 'muscle': e.muscle, 'equipment': e.equipment},
+          {
+            'name': e.name,
+            'muscle': e.muscle,
+            'equipment': e.equipment,
+            if (latest[e.name] case final r?) ...{
+              'prevKg': r.kgText,
+              'prevReps': r.reps.toString(),
+              'prev': '${r.kgText}kg x ${r.reps}',
+            },
+          },
       ],
     };
     await _writeFile('catalog.json', jsonEncode(payload));

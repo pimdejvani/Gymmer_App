@@ -77,6 +77,10 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      // Keep the widget's static snapshots fresh (routines/exercises may have
+      // changed) and pull back any edits the widget made while backgrounded.
+      unawaited(WidgetBridge.writeCatalog(exercises, history));
+      unawaited(WidgetBridge.writeRoutines(groups, history));
       unawaited(_reconcileWidgetSession());
     }
   }
@@ -98,7 +102,7 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
         activeWorkout = state.activeWorkout;
         loading = false;
       });
-      unawaited(WidgetBridge.writeCatalog(state.exercises));
+      unawaited(WidgetBridge.writeCatalog(state.exercises, state.history));
       unawaited(WidgetBridge.writeRoutines(state.groups, state.history));
       _pushSessionToWidget(state.activeWorkout);
     } catch (error) {
@@ -121,7 +125,7 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
       history = state.history;
       activeWorkout = state.activeWorkout;
     });
-    unawaited(WidgetBridge.writeCatalog(state.exercises));
+    unawaited(WidgetBridge.writeCatalog(state.exercises, state.history));
     unawaited(WidgetBridge.writeRoutines(state.groups, state.history));
     _pushSessionToWidget(state.activeWorkout);
   }

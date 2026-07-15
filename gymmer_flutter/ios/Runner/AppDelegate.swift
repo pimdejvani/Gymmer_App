@@ -1,5 +1,6 @@
 import Flutter
 import UIKit
+import UserNotifications
 import WidgetKit
 
 @main
@@ -8,6 +9,9 @@ import WidgetKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // Ask once for notification permission so the widget's rest-timer can fire a
+    // sound/haptic when a rest ends (the widget itself can't run in background).
+    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

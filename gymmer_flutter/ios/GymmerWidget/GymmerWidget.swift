@@ -1,6 +1,7 @@
 import WidgetKit
 import SwiftUI
 import AppIntents
+import UserNotifications
 
 // =============================================================================
 // GYMMER — Exercise Session Widget (6 pages, fully interactive via App Intents)
@@ -171,6 +172,9 @@ struct Session: Codable {
 
 struct CatalogItem: Codable {
   var name: String; var muscle: String; var equipment: String
+  var prevKg: String = ""
+  var prevReps: String = ""
+  var prev: String? = nil
 }
 
 struct RoutineItem: Codable {
@@ -228,7 +232,10 @@ enum WStore {
       CatalogItem(
         name: $0["name"] as? String ?? "",
         muscle: $0["muscle"] as? String ?? "",
-        equipment: $0["equipment"] as? String ?? ""
+        equipment: $0["equipment"] as? String ?? "",
+        prevKg: $0["prevKg"] as? String ?? "",
+        prevReps: $0["prevReps"] as? String ?? "",
+        prev: $0["prev"] as? String
       )
     }
   }
@@ -238,6 +245,29 @@ enum WStore {
           let data = try? Data(contentsOf: u),
           let file = try? JSONDecoder().decode(RoutinesFile.self, from: data) else { return [] }
     return file.routines
+  }
+}
+
+// MARK: - Rest-end notification (widgets can't run in the background, so we
+// schedule a local notification — its sound + haptic fire when rest elapses).
+
+enum RestNotify {
+  static let id = "gymmer.rest.end"
+
+  static func schedule(after seconds: Int) {
+    let center = UNUserNotificationCenter.current()
+    center.removePendingNotificationRequests(withIdentifiers: [id])
+    guard seconds > 0 else { return }
+    let content = UNMutableNotificationContent()
+    content.title = "พักครบแล้ว 💪"
+    content.body = "ไปเซ็ตต่อกันเลย"
+    content.sound = .default
+    let trigger = UNTimeIntervalNotificationTrigger(timeInterval: Double(seconds), repeats: false)
+    center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
+  }
+
+  static func cancel() {
+    UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
   }
 }
 
@@ -334,7 +364,9 @@ struct AddExerciseIntent: AppIntent {
     if let existing = s.exercises.firstIndex(where: { $0.name == name }) {
       s.exercises.remove(at: existing) // toggle off
     } else if let item = WStore.catalog().first(where: { $0.name == name }) {
-      s.exercises.append(WExercise(name: item.name, muscle: item.muscle, equipment: item.equipment))
+      var ex = WExercise(name: item.name, muscle: item.muscle, equipment: item.equipment)
+      ex.sets = [WSet(kg: item.prevKg, reps: item.prevReps, prev: item.prev)] // seed from history
+      s.exercises.append(ex)
     }
     WStore.save(s)
     return .result()
@@ -435,6 +467,7 @@ struct CompleteSetIntent: AppIntent {
     // Kick off the rest timer (a countdown overlay on the Log page).
     s.ui.restDur = ex.rest
     s.ui.restEndsAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(Double(ex.rest)))
+    RestNotify.schedule(after: ex.rest)
     WStore.save(s)
     return .result()
   }
@@ -463,6 +496,7 @@ struct RestAdjustIntent: AppIntent {
     let base = restRemaining(s)
     let newRemaining = max(0, base + delta)
     s.ui.restEndsAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(Double(newRemaining)))
+    RestNotify.schedule(after: newRemaining)
     WStore.save(s)
     return .result()
   }
@@ -473,6 +507,7 @@ struct SkipRestIntent: AppIntent {
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     s.ui.restEndsAt = nil // curSet was already advanced when the set completed
+    RestNotify.cancel()
     WStore.save(s)
     return .result()
   }
@@ -532,6 +567,7 @@ struct FinishSessionIntent: AppIntent {
     s.active = false
     s.outcome = "finish"
     s.ui = WUI()
+    RestNotify.cancel()
     WStore.save(s)
     return .result()
   }
@@ -543,6 +579,7 @@ struct DiscardIntent: AppIntent {
     var s = Session()
     s.active = false
     s.outcome = "discard"
+    RestNotify.cancel()
     WStore.save(s)
     return .result()
   }
@@ -695,9 +732,13 @@ private struct StartView: View {
           }
           if page > 0 {
             Button(intent: RoutinePageIntent(-1)) { chevron("chevron.left") }.buttonStyle(.plain)
+          } else {
+            dimChevron("chevron.left")
           }
           if hasMore {
             Button(intent: RoutinePageIntent(1)) { chevron("chevron.right") }.buttonStyle(.plain)
+          } else {
+            dimChevron("chevron.right")
           }
         }
       }
@@ -712,6 +753,17 @@ private func chevron(_ name: String) -> some View {
     .foregroundColor(T.textPrimary)
     .frame(width: 30, height: 30)
     .background(T.surfaceHigh)
+    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+}
+
+/// A disabled-looking chevron that occupies the SAME footprint as an active one
+/// so paging never shifts the surrounding buttons between pages.
+private func dimChevron(_ name: String) -> some View {
+  Image(systemName: name)
+    .font(.system(size: 12, weight: .bold))
+    .foregroundColor(T.textTertiary.opacity(0.35))
+    .frame(width: 30, height: 30)
+    .background(T.surface.opacity(0.4))
     .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
 }
 
@@ -742,73 +794,90 @@ private struct LogView: View {
     let ex = s.exercises[ei]
     let si = min(max(ex.curSet, 0), ex.sets.count - 1)
     let set = ex.sets[si]
-    return VStack(alignment: .leading, spacing: 7) {
+    return VStack(alignment: .leading, spacing: 6) {
       HStack(alignment: .firstTextBaseline, spacing: 6) {
         Text(ex.name).font(.system(size: 14, weight: .bold))
           .foregroundColor(T.textPrimary).lineLimit(1)
         Text("ท่า \(ei + 1)/\(s.exercises.count) · เซ็ต \(si + 1)/\(ex.sets.count)")
-          .font(.system(size: 10)).foregroundColor(T.textSecondary)
+          .font(.system(size: 10)).foregroundColor(T.textSecondary).lineLimit(1)
         Spacer(minLength: 0)
+        // Manage moved up to the header to free the control row.
+        Button(intent: NavIntent("manage")) {
+          Image(systemName: "ellipsis")
+            .font(.system(size: 13, weight: .bold)).foregroundColor(T.textPrimary)
+            .frame(width: 32, height: 26)
+            .background(T.surfaceHigh)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }.buttonStyle(.plain)
       }
       Text(set.prev.map { "ครั้งก่อน \($0)" } ?? "ไม่มีข้อมูลก่อนหน้า")
         .font(.system(size: 10)).foregroundColor(T.textTertiary).lineLimit(1)
 
-      stepper(label: "KG", value: set.kg.isEmpty ? "0" : set.kg,
-              down: AdjustIntent(field: "kg", delta: -2.5),
-              up: AdjustIntent(field: "kg", delta: 2.5))
-      stepper(label: "REP", value: set.reps.isEmpty ? "0" : set.reps,
-              down: AdjustIntent(field: "rep", delta: -1),
-              up: AdjustIntent(field: "rep", delta: 1))
-
-      HStack(spacing: 6) {
-        if sessionComplete(s) {
-          Button(intent: FinishSessionIntent()) {
-            HStack(spacing: 5) {
-              Image(systemName: "flag.checkered")
-              Text("จบ session").font(.system(size: 13, weight: .bold))
-            }
-            .foregroundColor(.black)
-            .frame(maxWidth: .infinity).padding(.vertical, 7)
-            .background(T.accent)
-            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-          }.buttonStyle(.plain)
-        } else {
+      if sessionComplete(s) {
+        Button(intent: FinishSessionIntent()) {
+          HStack(spacing: 6) {
+            Image(systemName: "flag.checkered")
+            Text("จบ session").font(.system(size: 15, weight: .bold))
+          }
+          .foregroundColor(.black)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .background(T.accent)
+          .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }.buttonStyle(.plain)
+      } else {
+        HStack(spacing: 7) {
+          // ✓ complete — moved to the front (leading), tall.
           Button(intent: CompleteSetIntent()) {
             Image(systemName: "checkmark")
-              .font(.system(size: 15, weight: .heavy)).foregroundColor(.black)
-              .frame(maxWidth: .infinity).padding(.vertical, 7)
+              .font(.system(size: 20, weight: .heavy)).foregroundColor(.black)
+              .frame(width: 50).frame(maxHeight: .infinity)
               .background(T.accent)
-              .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+              .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+          }.buttonStyle(.plain)
+          // Vertical KG / REP steppers (+ on top, value, − below).
+          vstepper(label: "KG", value: set.kg.isEmpty ? "0" : set.kg,
+                   up: AdjustIntent(field: "kg", delta: 2.5),
+                   down: AdjustIntent(field: "kg", delta: -2.5))
+          vstepper(label: "REP", value: set.reps.isEmpty ? "0" : set.reps,
+                   up: AdjustIntent(field: "rep", delta: 1),
+                   down: AdjustIntent(field: "rep", delta: -1))
+          // › next exercise, tall.
+          Button(intent: NextExerciseIntent()) {
+            Image(systemName: "chevron.right")
+              .font(.system(size: 16, weight: .bold)).foregroundColor(T.textPrimary)
+              .frame(width: 38).frame(maxHeight: .infinity)
+              .background(T.surfaceHigh)
+              .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
           }.buttonStyle(.plain)
         }
-        Button(intent: NextExerciseIntent()) { chevron("chevron.right") }.buttonStyle(.plain)
-        Button(intent: NavIntent("manage")) { chevron("ellipsis") }.buttonStyle(.plain)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
-      Spacer(minLength: 0)
     }
   }
 
-  private func stepper(label: String, value: String, down: some AppIntent, up: some AppIntent) -> some View {
-    HStack(spacing: 6) {
-      Button(intent: down) { stepBtn("minus") }.buttonStyle(.plain)
+  private func vstepper(label: String, value: String, up: some AppIntent, down: some AppIntent) -> some View {
+    VStack(spacing: 3) {
+      Button(intent: up) { vstepIcon("plus") }.buttonStyle(.plain)
       VStack(spacing: 0) {
         Text(label).font(.system(size: 9, weight: .semibold)).foregroundColor(T.textTertiary)
-        Text(value).font(.system(size: 17, weight: .heavy, design: .rounded))
-          .foregroundColor(T.textPrimary)
+        Text(value).font(.system(size: 18, weight: .heavy, design: .rounded))
+          .foregroundColor(T.textPrimary).lineLimit(1).minimumScaleFactor(0.6)
       }
-      .frame(maxWidth: .infinity).padding(.vertical, 3)
-      .background(T.surface)
-      .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-      Button(intent: up) { stepBtn("plus") }.buttonStyle(.plain)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      Button(intent: down) { vstepIcon("minus") }.buttonStyle(.plain)
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .padding(5)
+    .background(T.surface)
+    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
   }
 
-  private func stepBtn(_ icon: String) -> some View {
+  private func vstepIcon(_ icon: String) -> some View {
     Image(systemName: icon)
-      .font(.system(size: 14, weight: .bold)).foregroundColor(T.textPrimary)
-      .frame(width: 40, height: 40)
+      .font(.system(size: 13, weight: .bold)).foregroundColor(T.textPrimary)
+      .frame(maxWidth: .infinity).padding(.vertical, 5)
       .background(T.surfaceHigh)
-      .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+      .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
   }
 }
 
@@ -870,30 +939,40 @@ private struct AddView: View {
             .background(T.accent).clipShape(Capsule())
         }.buttonStyle(.plain)
       }
+      // Pad to a full page of cells so the grid height (and the nav row below)
+      // stays fixed no matter how many exercises the last page has.
+      let cells: [CatalogItem?] = slice.map { Optional($0) }
+        + Array<CatalogItem?>(repeating: nil, count: max(0, perPage - slice.count))
       LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
-        ForEach(Array(slice.enumerated()), id: \.offset) { _, item in
-          let idx = addedNames.firstIndex(of: item.name)
-          Button(intent: AddExerciseIntent(item.name)) {
-            HStack(spacing: 5) {
-              badge(idx)
-              VStack(alignment: .leading, spacing: 1) {
-                Text(item.name).font(.system(size: 11, weight: .semibold))
-                  .foregroundColor(T.textPrimary).lineLimit(1)
-                Text(item.muscle).font(.system(size: 9))
-                  .foregroundColor(T.textTertiary).lineLimit(1)
+        ForEach(Array(cells.enumerated()), id: \.offset) { _, item in
+          if let item {
+            let idx = addedNames.firstIndex(of: item.name)
+            Button(intent: AddExerciseIntent(item.name)) {
+              HStack(spacing: 5) {
+                badge(idx)
+                VStack(alignment: .leading, spacing: 1) {
+                  Text(item.name).font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(T.textPrimary).lineLimit(1)
+                  Text(item.muscle).font(.system(size: 9))
+                    .foregroundColor(T.textTertiary).lineLimit(1)
+                }
+                Spacer(minLength: 0)
               }
-              Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 7).padding(.vertical, 7)
-            .frame(maxWidth: .infinity)
-            .background(idx == nil ? T.surface : T.surfaceHigh)
-            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-          }.buttonStyle(.plain)
+              .padding(.horizontal, 7).padding(.vertical, 7)
+              .frame(maxWidth: .infinity)
+              .background(idx == nil ? T.surface : T.surfaceHigh)
+              .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            }.buttonStyle(.plain)
+          } else {
+            Color.clear.frame(height: 34) // placeholder keeps the row height
+          }
         }
       }
       HStack(spacing: 6) {
         if page > 0 { Button(intent: ListPageIntent(-1)) { chevron("chevron.left") }.buttonStyle(.plain) }
+        else { dimChevron("chevron.left") }
         if hasMore { Button(intent: ListPageIntent(1)) { chevron("chevron.right") }.buttonStyle(.plain) }
+        else { dimChevron("chevron.right") }
         Spacer(minLength: 0)
         Text("\(s.exercises.count) ท่าในเซสชัน").font(.system(size: 10)).foregroundColor(T.textSecondary)
       }
@@ -922,10 +1001,12 @@ private struct AddView: View {
   }
 }
 
+private enum FilterCell { case all, value(String), empty }
+
 private struct FilterView: View {
   var entry: GymmerEntry
   var isMuscle: Bool
-  private let perPage = 9
+  private let perPage = 8 // + the "All" cell = 9 cells (3×3), fixed each page
   var body: some View {
     let s = entry.session
     let values = distinctValues()
@@ -934,6 +1015,11 @@ private struct FilterView: View {
     let slice = Array(values.dropFirst(page * perPage).prefix(perPage))
     let hasMore = values.count > (page + 1) * perPage
     let kind = isMuscle ? "muscle" : "equip"
+    // First page leads with All; every page is padded to 9 cells so the grid
+    // height (and the nav row) never shifts between pages.
+    var cells: [FilterCell] = page == 0 ? [FilterCell.all] : []
+    cells += slice.map { FilterCell.value($0) }
+    while cells.count < 9 { cells.append(.empty) }
 
     VStack(alignment: .leading, spacing: 7) {
       HStack {
@@ -945,18 +1031,26 @@ private struct FilterView: View {
         }.buttonStyle(.plain)
       }
       LazyVGrid(columns: [GridItem(.flexible(), spacing: 5), GridItem(.flexible(), spacing: 5), GridItem(.flexible(), spacing: 5)], spacing: 5) {
-        Button(intent: SelectFilterIntent(kind: kind, value: "")) {
-          chip("All", on: selected == nil)
-        }.buttonStyle(.plain)
-        ForEach(Array(slice.enumerated()), id: \.offset) { _, v in
-          Button(intent: SelectFilterIntent(kind: kind, value: v)) {
-            chip(v, on: selected == v)
-          }.buttonStyle(.plain)
+        ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
+          switch cell {
+          case .all:
+            Button(intent: SelectFilterIntent(kind: kind, value: "")) {
+              chip("All", on: selected == nil)
+            }.buttonStyle(.plain)
+          case .value(let v):
+            Button(intent: SelectFilterIntent(kind: kind, value: v)) {
+              chip(v, on: selected == v)
+            }.buttonStyle(.plain)
+          case .empty:
+            Color.clear.frame(height: 27)
+          }
         }
       }
       HStack(spacing: 6) {
         if page > 0 { Button(intent: FilterPageIntent(-1)) { chevron("chevron.left") }.buttonStyle(.plain) }
+        else { dimChevron("chevron.left") }
         if hasMore { Button(intent: FilterPageIntent(1)) { chevron("chevron.right") }.buttonStyle(.plain) }
+        else { dimChevron("chevron.right") }
         Spacer(minLength: 0)
       }
       Spacer(minLength: 0)

@@ -1016,10 +1016,9 @@ private struct FilterView: View {
     let hasMore = values.count > (page + 1) * perPage
     let kind = isMuscle ? "muscle" : "equip"
     // First page leads with All; every page is padded to 9 cells so the grid
-    // height (and the nav row) never shifts between pages.
-    var cells: [FilterCell] = page == 0 ? [FilterCell.all] : []
-    cells += slice.map { FilterCell.value($0) }
-    while cells.count < 9 { cells.append(.empty) }
+    // height (and the nav row) never shifts between pages. Built in a helper so
+    // the ViewBuilder body stays free of control-flow statements.
+    let cells = paddedCells(leadWithAll: page == 0, values: slice)
 
     VStack(alignment: .leading, spacing: 7) {
       HStack {
@@ -1055,6 +1054,16 @@ private struct FilterView: View {
       }
       Spacer(minLength: 0)
     }
+  }
+
+  // Fixed 9-cell page: optional leading All, the page's values, empty padding.
+  // Uses Array(repeating:count:) instead of a while-loop so this can't sit in
+  // (and break) the ViewBuilder body.
+  private func paddedCells(leadWithAll: Bool, values: [String]) -> [FilterCell] {
+    var cells: [FilterCell] = leadWithAll ? [.all] : []
+    cells += values.map { FilterCell.value($0) }
+    cells += Array(repeating: FilterCell.empty, count: max(0, 9 - cells.count))
+    return cells
   }
 
   private func distinctValues() -> [String] {

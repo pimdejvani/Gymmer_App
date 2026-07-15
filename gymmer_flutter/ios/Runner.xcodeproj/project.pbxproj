@@ -22,6 +22,7 @@
 		D10000000000000000000022 /* GymmerActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000020 /* GymmerActivityAttributes.swift */; };
 		D10000000000000000000024 /* GymmerNavigationIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000023 /* GymmerNavigationIntent.swift */; };
 		D10000000000000000000025 /* GymmerNavigationIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000023 /* GymmerNavigationIntent.swift */; };
+		D10000000000000000000026 /* GymmerWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000009 /* GymmerWidget.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -351,6 +352,7 @@
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 				D10000000000000000000021 /* GymmerActivityAttributes.swift in Sources */,
 				D10000000000000000000024 /* GymmerNavigationIntent.swift in Sources */,
+				D10000000000000000000026 /* GymmerWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -697,6 +699,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.gymmer.gymmerFlutter.GymmerWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) GYMMER_WIDGET_EXTENSION";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -725,6 +728,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.gymmer.gymmerFlutter.GymmerWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) GYMMER_WIDGET_EXTENSION";
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
@@ -754,6 +758,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.gymmer.gymmerFlutter.GymmerWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) GYMMER_WIDGET_EXTENSION";
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

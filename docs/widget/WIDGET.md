@@ -32,8 +32,8 @@ GymmerWidget.swift
   ├─ App Intents mutate session.json
   └─ LiveSync.refresh() updates the running Live Activity
 
-GymmerNavigationIntent.swift (Runner + Widget target)
-  └─ LiveActivityIntent saves page + updates ActivityKit in the app process
+GymmerWidget.swift backend + GymmerNavigationIntent.swift (Runner + Widget target)
+  └─ LiveActivityIntents mutate session + update ActivityKit in the app process
 
 Flutter resumes
   └─ reads a newer widget-authored session.json revision → rebuilds → saves SQLite
@@ -71,8 +71,9 @@ channel การเขียน/อ่านจะ no-op และแอปห�
 
 ทุก action เป็น App Intent. Action ที่เปลี่ยน session ใช้
 `WStore.saveAndSync` ซึ่งทำสามอย่าง: save, reload widget timeline และ refresh
-Live Activity ถ้ามีอยู่ ส่วน page navigation ใช้ `NavIntent` แบบ
-`LiveActivityIntent` ซึ่ง compile เข้า Runner และ widget target
+Live Activity ถ้ามีอยู่ ทุก intent ที่แสดงใน Live Activity เป็น
+`LiveActivityIntent` และ compile เข้า Runner กับ widget target; intent สำหรับ
+หน้า Start/routine ที่มีเฉพาะ Home Screen widget ยังเป็น `AppIntent` ปกติ
 
 ปุ่มบน Live Activity ครอบคลุมชุดควบคุมของหน้า Log/Rest ไม่รวม Start, Add,
 Filter หรือ Manage
@@ -140,9 +141,10 @@ component แยกจาก widget เว้นแต่ข้อจำกั�
 1. Flutter foreground เรียก `startLiveActivity` เมื่อมี active workout; ถ้ามี
    activity อยู่แล้วจะ update แทนการสร้างซ้อน
 2. การแก้ draft จากแอปส่ง state ปัจจุบันไป Runner เพื่อ update
-3. Page navigation บน Live Activity รัน `NavIntent` ใน Runner process, เขียน
-   `session.json`, reload widget และ update ActivityKit content state โดยตรง
-4. Session mutation อื่นเขียน shared session แล้วเรียก `LiveSync.refresh()`
+3. ทุกปุ่มบน Live Activity รัน `LiveActivityIntent` ใน Runner process, เขียน
+   `session.json` และ update ActivityKit content state โดยตรง
+4. หลัง Activity update สำเร็จจึง reload Home Screen widget timeline; ตัวเลข
+   KG/REP ใช้ invalidation feedback ระหว่างรอ system redraw
 5. finish/discard เรียก `endLiveActivity` และปิด activity แบบ immediate
 
 State ที่แสดงคือชื่อ routine/session, exercise ปัจจุบัน, `ท่า n/m`, set label,
@@ -164,7 +166,7 @@ Lock Screen. iPhone ที่ไม่มี Dynamic Island ไม่มี Live
 | `gymmer_flutter/lib/data/widget_bridge.dart` | serialize catalog/routines/session, Live Activity state, อ่านกลับและ rebuild workout |
 | `gymmer_flutter/ios/Runner/AppDelegate.swift` | MethodChannel, App Group I/O, foreground ActivityKit manager |
 | `gymmer_flutter/ios/Runner/SceneDelegate.swift` | temporary App Group POC launch alert; ต้องลบก่อน release |
-| `gymmer_flutter/ios/GymmerWidget/GymmerWidget.swift` | widget views, App Intents, shared store, notification, Live Activity UI/sync |
+| `gymmer_flutter/ios/GymmerWidget/GymmerWidget.swift` | widget/Activity views, shared store, notification, LiveActivityIntents และ Activity sync; backend compile เข้า Runner ด้วย |
 | `gymmer_flutter/ios/GymmerWidget/GymmerActivityAttributes.swift` | shared ActivityKit attributes/content state |
 | `gymmer_flutter/ios/GymmerWidget/GymmerNavigationIntent.swift` | shared page-navigation LiveActivityIntent ใน Runner + widget target |
 | `gymmer_flutter/ios/Runner.xcodeproj/project.pbxproj` | WidgetKit target, embed extension, shared source membership |

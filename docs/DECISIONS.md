@@ -78,15 +78,15 @@ The App Group identifier is resolved from the installed provisioning profile at
 runtime because SideStore can rewrite it during re-signing. Both Runner and
 WidgetKit use the same resolver.
 
-## 12. (2026-07-15) Live Activity starts in Runner; navigation runs in Runner
+## 12. (2026-07-15) Live Activity starts and interactive intents run in Runner
 
 Only the foreground app starts the ActivityKit Live Activity. Flutter sends the
 current workout state through the `gymmer/widget` method channel; Runner starts,
-updates, or ends the activity. Session mutation intents use the App Group and
-refresh the running activity. Page navigation specifically uses a shared
-`LiveActivityIntent` compiled into Runner and the widget target because Apple
-runs that intent in the app process; it writes `session.json`, reloads the home
-widget, and updates the ActivityKit content state before returning.
+updates, or ends the activity. Every intent exposed inside the Live Activity is
+a shared `LiveActivityIntent` compiled into Runner and the widget target because
+Apple runs that intent in the app process. It mutates `session.json`, updates
+the ActivityKit content state, then reloads the home widget before returning.
+Start/routine-only home-widget intents remain ordinary `AppIntent`s.
 
 The companion target is iOS 17 and supports the medium home widget plus Lock
 Screen/Dynamic Island presentations. The Lock Screen and expanded Dynamic

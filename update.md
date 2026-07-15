@@ -46,6 +46,11 @@ Implemented on branch `ios` across the widget commits from `cdea8c8` through
   packaging only for pushes/manual runs, skipping docs-only changes, restoring
   incremental `build/ios` data, avoiding repeated pub resolution, and using
   faster IPA compression.
+- Fixed delayed/stale interactive Live Activity controls by compiling all
+  Activity-facing intents into Runner and adopting `LiveActivityIntent`. Weight,
+  reps, exercise/set management, filters, rest controls, finish/discard, and
+  navigation now update ActivityKit from the app process before reloading the
+  home widget; numeric values show invalidation feedback while awaiting redraw.
 
 ## 2026-07-14 — iOS photo permission recorded
 

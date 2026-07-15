@@ -294,6 +294,7 @@ enum Num {
 
 // -- Start page -------------------------------------------------------------
 
+@available(iOS 17.0, *)
 struct StartEmptyIntent: AppIntent {
   static var title: LocalizedStringResource = "Start empty session"
   func perform() async throws -> some IntentResult {
@@ -309,6 +310,7 @@ struct StartEmptyIntent: AppIntent {
   }
 }
 
+@available(iOS 17.0, *)
 struct StartRoutineIntent: AppIntent {
   static var title: LocalizedStringResource = "Start routine"
   @Parameter(title: "name") var name: String
@@ -330,6 +332,7 @@ struct StartRoutineIntent: AppIntent {
   }
 }
 
+@available(iOS 17.0, *)
 struct RoutinePageIntent: AppIntent {
   static var title: LocalizedStringResource = "Page routines"
   @Parameter(title: "delta") var delta: Int
@@ -345,6 +348,7 @@ struct RoutinePageIntent: AppIntent {
 
 // -- Add / filter -----------------------------------------------------------
 
+@available(iOS 17.0, *)
 struct AddExerciseIntent: AppIntent {
   static var title: LocalizedStringResource = "Add exercise"
   @Parameter(title: "name") var name: String
@@ -366,6 +370,7 @@ struct AddExerciseIntent: AppIntent {
 }
 
 // Picker cell, right zone: +1 set on an already-queued exercise (copies the last set).
+@available(iOS 17.0, *)
 struct PickerAddSetIntent: AppIntent {
   static var title: LocalizedStringResource = "Add set from picker"
   @Parameter(title: "name") var name: String
@@ -382,6 +387,7 @@ struct PickerAddSetIntent: AppIntent {
 }
 
 // Picker cell, circle badge: −1 set; removing the last set drops the exercise from the queue.
+@available(iOS 17.0, *)
 struct PickerRemoveSetIntent: AppIntent {
   static var title: LocalizedStringResource = "Remove set from picker"
   @Parameter(title: "name") var name: String
@@ -403,6 +409,7 @@ struct PickerRemoveSetIntent: AppIntent {
   }
 }
 
+@available(iOS 17.0, *)
 struct ListPageIntent: AppIntent {
   static var title: LocalizedStringResource = "Page exercise list"
   @Parameter(title: "delta") var delta: Int
@@ -416,6 +423,7 @@ struct ListPageIntent: AppIntent {
   }
 }
 
+@available(iOS 17.0, *)
 struct FilterPageIntent: AppIntent {
   static var title: LocalizedStringResource = "Page filter chips"
   @Parameter(title: "delta") var delta: Int
@@ -429,6 +437,7 @@ struct FilterPageIntent: AppIntent {
   }
 }
 
+@available(iOS 17.0, *)
 struct SelectFilterIntent: AppIntent {
   static var title: LocalizedStringResource = "Select filter"
   @Parameter(title: "kind") var kind: String   // "muscle" | "equip"
@@ -448,6 +457,7 @@ struct SelectFilterIntent: AppIntent {
 
 // -- Log page ---------------------------------------------------------------
 
+@available(iOS 17.0, *)
 struct AdjustIntent: AppIntent {
   static var title: LocalizedStringResource = "Adjust value"
   @Parameter(title: "field") var field: String // "kg" | "rep"
@@ -473,6 +483,7 @@ struct AdjustIntent: AppIntent {
   }
 }
 
+@available(iOS 17.0, *)
 struct CompleteSetIntent: AppIntent {
   static var title: LocalizedStringResource = "Complete set"
   func perform() async throws -> some IntentResult {
@@ -503,6 +514,7 @@ struct CompleteSetIntent: AppIntent {
   }
 }
 
+@available(iOS 17.0, *)
 struct NextExerciseIntent: AppIntent {
   static var title: LocalizedStringResource = "Next exercise"
   func perform() async throws -> some IntentResult {
@@ -516,6 +528,7 @@ struct NextExerciseIntent: AppIntent {
 
 // -- Rest -------------------------------------------------------------------
 
+@available(iOS 17.0, *)
 struct RestAdjustIntent: AppIntent {
   static var title: LocalizedStringResource = "Adjust rest"
   @Parameter(title: "delta") var delta: Int
@@ -532,6 +545,7 @@ struct RestAdjustIntent: AppIntent {
   }
 }
 
+@available(iOS 17.0, *)
 struct SkipRestIntent: AppIntent {
   static var title: LocalizedStringResource = "Skip rest"
   func perform() async throws -> some IntentResult {
@@ -545,6 +559,7 @@ struct SkipRestIntent: AppIntent {
 
 // -- Manage -----------------------------------------------------------------
 
+@available(iOS 17.0, *)
 struct AddSetIntent: AppIntent {
   static var title: LocalizedStringResource = "Add set"
   func perform() async throws -> some IntentResult {
@@ -560,6 +575,7 @@ struct AddSetIntent: AppIntent {
   }
 }
 
+@available(iOS 17.0, *)
 struct RemoveSetIntent: AppIntent {
   static var title: LocalizedStringResource = "Remove set"
   func perform() async throws -> some IntentResult {
@@ -577,6 +593,7 @@ struct RemoveSetIntent: AppIntent {
   }
 }
 
+@available(iOS 17.0, *)
 struct RemoveExerciseIntent: AppIntent {
   static var title: LocalizedStringResource = "Remove exercise"
   func perform() async throws -> some IntentResult {
@@ -590,6 +607,7 @@ struct RemoveExerciseIntent: AppIntent {
   }
 }
 
+@available(iOS 17.0, *)
 struct FinishSessionIntent: AppIntent {
   static var title: LocalizedStringResource = "Finish session"
   func perform() async throws -> some IntentResult {
@@ -603,6 +621,7 @@ struct FinishSessionIntent: AppIntent {
   }
 }
 
+@available(iOS 17.0, *)
 struct DiscardIntent: AppIntent {
   static var title: LocalizedStringResource = "Discard session"
   func perform() async throws -> some IntentResult {
@@ -655,6 +674,7 @@ func nextIncompleteExercise(_ s: Session, after i: Int) -> Int? {
 // and END running ones. Every session-mutating App Intent funnels through
 // WStore.saveAndSync so the Lock Screen mirror tracks edits made from the home
 // widget or the Live Activity itself while the app is backgrounded.
+@available(iOS 17.0, *)
 enum LiveSync {
   static func contentState(_ s: Session) -> GymmerActivityAttributes.ContentState {
     let ei = s.safeExIndex
@@ -711,13 +731,51 @@ extension WStore {
   /// Save + mirror onto any running Live Activity, and nudge the home widget —
   /// a tap on the Live Activity does NOT auto-reload widget timelines the way a
   /// tap on the widget itself does.
+  @available(iOS 17.0, *)
   static func saveAndSync(_ session: Session) async {
     save(session)
-    WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
     await LiveSync.refresh()
+    WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
   }
 }
 
+// A LiveActivityIntent runs in the containing app process. Compile these
+// conformances into both targets so every Activity button can update the
+// running Activity immediately instead of relying on the extension process.
+@available(iOS 17.0, *)
+extension AddExerciseIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension PickerAddSetIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension PickerRemoveSetIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension ListPageIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension FilterPageIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension SelectFilterIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension AdjustIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension CompleteSetIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension NextExerciseIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension RestAdjustIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension SkipRestIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension AddSetIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension RemoveSetIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension RemoveExerciseIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension FinishSessionIntent: LiveActivityIntent {}
+@available(iOS 17.0, *)
+extension DiscardIntent: LiveActivityIntent {}
+
+#if GYMMER_WIDGET_EXTENSION
 // MARK: - Timeline
 
 struct GymmerEntry: TimelineEntry {
@@ -967,6 +1025,7 @@ private struct LogView: View {
         Text(label).font(.system(size: 9, weight: .semibold)).foregroundColor(T.textTertiary)
         Text(value).font(.system(size: 20, weight: .heavy, design: .rounded))
           .foregroundColor(T.textPrimary).lineLimit(1).minimumScaleFactor(0.6)
+          .contentTransition(.numericText()).invalidatableContent()
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       Button(intent: up) { hstepIcon("plus") }.buttonStyle(.plain)
@@ -1362,3 +1421,4 @@ private struct LiveActivityEntryView: View {
       .background(T.bg)
   }
 }
+#endif

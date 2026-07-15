@@ -124,9 +124,9 @@ per-second WidgetKit timeline entries.
 
 The Lock Screen and expanded Dynamic Island Live Activity reuse the same Add,
 Muscle/Equipment Filter, Log, Rest, and Manage views as the home widget; only
-Start is omitted. The foreground Flutter app starts or ends the activity. Page
-navigation runs as a shared `LiveActivityIntent` in Runner, persists the page,
-reloads the widget, and updates the ActivityKit content state.
+Start is omitted. The foreground Flutter app starts or ends the activity. Every
+control shown in the Activity runs as a shared `LiveActivityIntent` in Runner,
+persists its mutation, updates ActivityKit, then reloads the home widget.
 
 This companion is iOS-only and does not change the Android/web feature scope.
 

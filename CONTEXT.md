@@ -73,8 +73,9 @@ iteration). Desktop is out of scope.
   Manage) and reads/writes the active session through the App Group container.
   The Lock Screen and expanded Dynamic Island Live Activity reuse the widget's
   Add, Muscle/Equipment Filter, Log, Rest, and Manage pages (without Start).
-  Page navigation is a shared `LiveActivityIntent` compiled into Runner and the
-  widget target so it updates the running Activity from the app process.
+  Every intent used by Live Activity controls is compiled into Runner and the
+  widget target and conforms to `LiveActivityIntent`, so value mutations and
+  navigation update the running Activity from the app process.
 - Widget state is shared through `catalog.json`, `routines.json`, and
   `session.json`. The Flutter app reconciles widget-authored `session.json`
   revisions into SQLite when it resumes; widget/native failures are ignored on

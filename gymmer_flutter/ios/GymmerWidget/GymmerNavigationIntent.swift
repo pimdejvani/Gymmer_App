@@ -17,7 +17,6 @@ struct NavIntent: LiveActivityIntent {
 
   func perform() async throws -> some IntentResult {
     NavigationStore.save(page: page)
-    WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
 
     for activity in Activity<GymmerActivityAttributes>.activities {
       var state = activity.content.state
@@ -26,6 +25,7 @@ struct NavIntent: LiveActivityIntent {
         ActivityContent(state: state, staleDate: state.restEnds)
       )
     }
+    WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
     return .result()
   }
 }

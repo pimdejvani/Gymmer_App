@@ -83,6 +83,64 @@ class GymmerSqliteStore implements WorkoutStore {
         _db.execute('PRAGMA user_version = 3');
       });
     }
+    if (version < 4) {
+      _transaction(() {
+        _removeSeedData();
+        _db.execute('PRAGMA user_version = 4');
+      });
+    }
+  }
+
+  /// One-time cleanup for installs upgraded from a build that seeded demo data
+  /// on first launch. The app now starts blank, but those seed rows persist in
+  /// the existing SQLite file (app updates don't wipe it). Remove the prototype
+  /// routine groups (with their routines) and any prototype exercise that
+  /// nothing else references — leaving intact any exercise the user actually
+  /// logged sets against, so no ON DELETE RESTRICT foreign key trips.
+  void _removeSeedData() {
+    const seedGroups = ['Push', 'Pull', 'Legs', 'Core'];
+    const seedExercises = [
+      'Incline Dumbbell Press',
+      'Chest Press',
+      'Cable Lateral Raise',
+      'Overhead Press',
+      'Face Pull',
+      'Lat Pulldown',
+      'Barbell Row',
+      'Barbell Curl',
+      'Triceps Rope Pushdown',
+      'Cable Crunch',
+      'Hanging Leg Raise',
+      'Barbell Back Squat',
+      'Romanian Deadlift',
+      'Hip Thrust',
+      'Standing Calf Raise',
+    ];
+    final groupQs = List.filled(seedGroups.length, '?').join(', ');
+    final exQs = List.filled(seedExercises.length, '?').join(', ');
+
+    // Routines first (routines.group_id is RESTRICT). Deleting a routine
+    // cascades its routine_exercises / routine_sets / previous-set snapshots and
+    // nulls any active/completed session that pointed at it.
+    _execute(
+      'DELETE FROM routines WHERE group_id IN '
+      '(SELECT id FROM routine_groups WHERE name IN ($groupQs))',
+      seedGroups,
+    );
+    _execute(
+      'DELETE FROM routine_groups WHERE name IN ($groupQs)',
+      seedGroups,
+    );
+
+    // Prototype exercises, but only those referenced by nothing (routines,
+    // history, or the active workout) so real logged data is preserved.
+    _execute(
+      'DELETE FROM exercises WHERE name IN ($exQs) '
+      'AND id NOT IN (SELECT exercise_id FROM routine_exercises) '
+      'AND id NOT IN (SELECT exercise_id FROM completed_workout_exercises) '
+      'AND id NOT IN (SELECT exercise_id FROM active_workout_exercises)',
+      seedExercises,
+    );
   }
 
   static String _measurementsTableDdl() {

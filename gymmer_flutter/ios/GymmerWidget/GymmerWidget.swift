@@ -258,9 +258,13 @@ enum RestNotify {
     let center = UNUserNotificationCenter.current()
     center.removePendingNotificationRequests(withIdentifiers: [id])
     guard seconds > 0 else { return }
+    // We really only want a buzz when rest ends. iOS has no background
+    // haptic-only API — the vibration rides along with a delivered
+    // notification, so a banner is unavoidable. Keep it to a single short
+    // line (no body) so it's the least intrusive nudge possible. The sound is
+    // what triggers the device's standard vibration.
     let content = UNMutableNotificationContent()
-    content.title = "พักครบแล้ว 💪"
-    content.body = "ไปเซ็ตต่อกันเลย"
+    content.title = "พักครบ 💪"
     content.sound = .default
     let trigger = UNTimeIntervalNotificationTrigger(timeInterval: Double(seconds), repeats: false)
     center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
@@ -825,59 +829,63 @@ private struct LogView: View {
           .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }.buttonStyle(.plain)
       } else {
-        HStack(spacing: 7) {
-          // ✓ complete — moved to the front (leading), tall.
-          Button(intent: CompleteSetIntent()) {
-            Image(systemName: "checkmark")
-              .font(.system(size: 20, weight: .heavy)).foregroundColor(.black)
-              .frame(width: 50).frame(maxHeight: .infinity)
-              .background(T.accent)
-              .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-          }.buttonStyle(.plain)
-          // Vertical KG / REP steppers (+ on top, value, − below).
-          vstepper(label: "KG", value: set.kg.isEmpty ? "0" : set.kg,
-                   up: AdjustIntent(field: "kg", delta: 2.5),
-                   down: AdjustIntent(field: "kg", delta: -2.5))
-          vstepper(label: "REP", value: set.reps.isEmpty ? "0" : set.reps,
-                   up: AdjustIntent(field: "rep", delta: 1),
-                   down: AdjustIntent(field: "rep", delta: -1))
-          // › next exercise, tall.
-          Button(intent: NextExerciseIntent()) {
-            Image(systemName: "chevron.right")
-              .font(.system(size: 16, weight: .bold)).foregroundColor(T.textPrimary)
-              .frame(width: 38).frame(maxHeight: .infinity)
-              .background(T.surfaceHigh)
-              .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-          }.buttonStyle(.plain)
+        // Two rows of horizontal steppers. Row 1: REP + › next exercise.
+        // Row 2: KG + ✓ complete set (the primary action, bottom-right).
+        VStack(spacing: 7) {
+          HStack(spacing: 7) {
+            hstepper(label: "REP", value: set.reps.isEmpty ? "0" : set.reps,
+                     down: AdjustIntent(field: "rep", delta: -1),
+                     up: AdjustIntent(field: "rep", delta: 1))
+            Button(intent: NextExerciseIntent()) {
+              Image(systemName: "chevron.right")
+                .font(.system(size: 16, weight: .bold)).foregroundColor(T.textPrimary)
+                .frame(width: 48).frame(maxHeight: .infinity)
+                .background(T.surfaceHigh)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }.buttonStyle(.plain)
+          }
+          HStack(spacing: 7) {
+            hstepper(label: "KG", value: set.kg.isEmpty ? "0" : set.kg,
+                     down: AdjustIntent(field: "kg", delta: -2.5),
+                     up: AdjustIntent(field: "kg", delta: 2.5))
+            Button(intent: CompleteSetIntent()) {
+              Image(systemName: "checkmark")
+                .font(.system(size: 20, weight: .heavy)).foregroundColor(.black)
+                .frame(width: 48).frame(maxHeight: .infinity)
+                .background(T.accent)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }.buttonStyle(.plain)
+          }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
   }
 
-  private func vstepper(label: String, value: String, up: some AppIntent, down: some AppIntent) -> some View {
-    VStack(spacing: 3) {
-      Button(intent: up) { vstepIcon("plus") }.buttonStyle(.plain)
+  // Horizontal stepper: [ − ] [ label / value ] [ + ], filling its row height.
+  private func hstepper(label: String, value: String, down: some AppIntent, up: some AppIntent) -> some View {
+    HStack(spacing: 6) {
+      Button(intent: down) { hstepIcon("minus") }.buttonStyle(.plain)
       VStack(spacing: 0) {
         Text(label).font(.system(size: 9, weight: .semibold)).foregroundColor(T.textTertiary)
-        Text(value).font(.system(size: 18, weight: .heavy, design: .rounded))
+        Text(value).font(.system(size: 20, weight: .heavy, design: .rounded))
           .foregroundColor(T.textPrimary).lineLimit(1).minimumScaleFactor(0.6)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      Button(intent: down) { vstepIcon("minus") }.buttonStyle(.plain)
+      Button(intent: up) { hstepIcon("plus") }.buttonStyle(.plain)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .padding(5)
+    .padding(.horizontal, 6).padding(.vertical, 4)
     .background(T.surface)
     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
   }
 
-  private func vstepIcon(_ icon: String) -> some View {
+  private func hstepIcon(_ icon: String) -> some View {
     Image(systemName: icon)
-      .font(.system(size: 13, weight: .bold)).foregroundColor(T.textPrimary)
-      .frame(maxWidth: .infinity).padding(.vertical, 5)
+      .font(.system(size: 15, weight: .bold)).foregroundColor(T.textPrimary)
+      .frame(width: 34).frame(maxHeight: .infinity)
       .background(T.surfaceHigh)
-      .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+      .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
   }
 }
 

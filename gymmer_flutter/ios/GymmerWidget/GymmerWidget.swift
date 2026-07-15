@@ -1360,18 +1360,21 @@ private struct LiveActivityEntryView: View {
   let state: GymmerActivityAttributes.ContentState
   let title: String
 
-  var body: some View {
+  private var entry: GymmerEntry {
     let stored = WStore.loadSession()
     var session = stored
     session.active = true
     session.sessionName = session.sessionName ?? title
     session.ui.page = state.page ?? "log"
-    let entry = GymmerEntry(
+    return GymmerEntry(
       date: Date(),
       session: session,
       catalog: WStore.catalog(),
       routines: []
     )
+  }
+
+  var body: some View {
     GymmerSessionPagesView(entry: entry, showStart: false)
       .padding(12)
       .frame(maxWidth: .infinity, minHeight: 158, alignment: .topLeading)

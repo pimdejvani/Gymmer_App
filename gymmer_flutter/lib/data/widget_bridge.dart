@@ -142,6 +142,55 @@ class WidgetBridge {
   }
 
   // ---------------------------------------------------------------------------
+  // Live Activity (Lock Screen). Only the foreground app can START one, so the
+  // app drives it: calling [syncLiveActivity] with a workout starts-or-updates
+  // the activity; with null it ends it. The native side is idempotent.
+  // ---------------------------------------------------------------------------
+
+  /// Starts/updates the Lock Screen Live Activity for [workout], or ends it when
+  /// [workout] is null (finished / discarded / no session).
+  static Future<void> syncLiveActivity(ActiveWorkout? workout) async {
+    if (workout == null) {
+      await _invokeVoid('endLiveActivity');
+      return;
+    }
+    await _invokeVoid('startLiveActivity', liveActivityState(workout));
+  }
+
+  /// Builds the Live Activity display fields from [w]: the current exercise is
+  /// the first with an unlogged set (else the last), mirroring the widget.
+  static Map<String, Object?> liveActivityState(ActiveWorkout w) {
+    final title = w.routineName ?? w.sessionName;
+    if (w.exercises.isEmpty) {
+      return {
+        'title': title, 'phase': 'log', 'exName': '', 'exIndex': 0,
+        'exCount': 0, 'setLabel': '', 'kg': '', 'reps': '', 'prev': null,
+        'restEndsEpoch': null,
+      };
+    }
+    var exIdx = w.exercises.indexWhere((e) => e.sets.any((s) => !s.completed));
+    final allDone = exIdx < 0;
+    if (exIdx < 0) exIdx = w.exercises.length - 1;
+    final ex = w.exercises[exIdx];
+    var setIdx = ex.sets.indexWhere((s) => !s.completed);
+    final exDone = setIdx < 0;
+    if (setIdx < 0) setIdx = ex.sets.length - 1;
+    final set = ex.sets[setIdx];
+    return {
+      'title': title,
+      'phase': allDone ? 'done' : 'log',
+      'exName': ex.exercise.name,
+      'exIndex': exIdx + 1,
+      'exCount': w.exercises.length,
+      'setLabel': exDone ? 'Done' : 'เซ็ต ${setIdx + 1}/${ex.sets.length}',
+      'kg': set.kg.text.trim(),
+      'reps': set.reps.text.trim(),
+      'prev': set.previousLabel,
+      'restEndsEpoch': null,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // Reader (container -> app), used on resume to pull widget-made edits.
   // ---------------------------------------------------------------------------
 
@@ -244,6 +293,18 @@ class WidgetBridge {
       return null;
     } on PlatformException {
       return null;
+    }
+  }
+
+  /// Fire-and-forget channel call that no-ops off iOS (or when the container /
+  /// Live Activity is unavailable).
+  static Future<void> _invokeVoid(String method, [Object? args]) async {
+    try {
+      await _channel.invokeMethod<void>(method, args);
+    } on MissingPluginException {
+      // Not iOS — ignore.
+    } on PlatformException {
+      // Activity unavailable / disabled — ignore.
     }
   }
 }

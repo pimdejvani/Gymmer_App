@@ -143,6 +143,8 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
     final snapshot = WidgetBridge.encodeSession(workout);
     _lastWidgetRev = snapshot['rev'] as int? ?? _lastWidgetRev;
     unawaited(WidgetBridge.writeSession(workout));
+    // Mirror the session onto the Lock Screen Live Activity (start/update/end).
+    unawaited(WidgetBridge.syncLiveActivity(workout));
   }
 
   /// On resume, pull back session.json. If the WIDGET wrote a newer revision
@@ -174,6 +176,7 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
       if (!mounted) return;
       activeWorkout?.dispose();
       setState(() => activeWorkout = null);
+      unawaited(WidgetBridge.syncLiveActivity(null));
       return;
     }
 
@@ -187,6 +190,7 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
     final previous = activeWorkout;
     setState(() => activeWorkout = rebuilt);
     previous?.dispose();
+    unawaited(WidgetBridge.syncLiveActivity(rebuilt));
   }
 
   Future<void> startEmptyWorkout() async {

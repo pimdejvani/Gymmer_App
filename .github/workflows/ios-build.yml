@@ -16,7 +16,40 @@ on:
 permissions:
   contents: write   # create Releases and commit apps.json back
 
+# Push again before a build finishes → cancel the older run so we don't queue
+# up superseded full builds (and burn runner minutes).
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Fast, parallel red/green on whether the Swift widget + Dart still COMPILE.
+  # A debug build skips the slow release AOT, so this finishes well before the
+  # full release job below — giving early feedback while that keeps running for
+  # the actual on-device update. Does NOT publish anything.
+  compile-check:
+    name: Fast compile check (debug)
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: gymmer_flutter
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.4
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS (debug, no codesign) — compiles Swift widget + Dart
+        run: flutter build ios --debug --no-codesign
+
   build-ios:
     name: Build unsigned iOS app
     runs-on: macos-15

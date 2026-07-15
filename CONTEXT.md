@@ -1,6 +1,6 @@
 # GYMMER Context
 
-Last reviewed: 2026-07-15 (`ios` branch, after Live Activity phase 2).
+Last reviewed: 2026-07-16 (`ios` branch, after intent-path separation).
 
 GYMMER is a single-user offline workout tracker. Flutter only; the Swift
 project at repo root is dead legacy.
@@ -73,9 +73,10 @@ iteration). Desktop is out of scope.
   Manage) and reads/writes the active session through the App Group container.
   The Lock Screen and expanded Dynamic Island Live Activity reuse the widget's
   Add, Muscle/Equipment Filter, Log, Rest, and Manage pages (without Start).
-  Every intent used by Live Activity controls is compiled into Runner and the
-  widget target and conforms to `LiveActivityIntent`, so value mutations and
-  navigation update the running Activity from the app process.
+  Home-widget controls retain ordinary `AppIntent`s in the extension. Live
+  Activity controls use Runner-side `LiveActivityIntent` wrappers that dispatch
+  to the same mutation implementations, so the widget keeps its original fast
+  path while ActivityKit is refreshed from the app process.
 - Widget state is shared through `catalog.json`, `routines.json`, and
   `session.json`. The Flutter app reconciles widget-authored `session.json`
   revisions into SQLite when it resumes; widget/native failures are ignored on

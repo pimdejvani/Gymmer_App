@@ -50,7 +50,13 @@ Implemented on branch `ios` across the widget commits from `cdea8c8` through
   Activity-facing intents into Runner and adopting `LiveActivityIntent`. Weight,
   reps, exercise/set management, filters, rest controls, finish/discard, and
   navigation now update ActivityKit from the app process before reloading the
-  home widget; numeric values show invalidation feedback while awaiting redraw.
+  home widget.
+- Corrected the resulting Home Widget regression by splitting the intent types:
+  the widget is back on its original extension-side `AppIntent` path, while the
+  Live Activity uses Runner-side wrappers that dispatch to the same mutations.
+  Removed numeric invalidation/transition feedback that caused KG/REP controls
+  to blink. Activity intents request `alwaysAllowed` as a best effort, but iOS
+  still owns Lock Screen authentication; Now Playing is a separate media API.
 
 ## 2026-07-14 — iOS photo permission recorded
 

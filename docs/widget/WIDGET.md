@@ -1,7 +1,6 @@
 # GYMMER — iOS Widget และ Lock Screen Live Activity
 
-สถานะ: implementation ใช้งานได้บน branch `ios` (ตรวจจาก commit ถึง
-`e5f2c88`, 2026-07-15)
+สถานะ: implementation ใช้งานได้บน branch `ios` (ตรวจล่าสุด 2026-07-16)
 
 เอกสารนี้อธิบายโค้ดจริงของ companion บน iOS ไม่ใช่แผน mockup เดิม โดยมี
 สอง surface ที่ใช้ App Intents และ state ชุดเดียวกัน:
@@ -29,11 +28,11 @@ Flutter app
 
 GymmerWidget.swift
   ├─ reads the three JSON snapshots
-  ├─ App Intents mutate session.json
+  ├─ Home-widget AppIntents mutate session.json in the extension
   └─ LiveSync.refresh() updates the running Live Activity
 
 GymmerWidget.swift backend + GymmerNavigationIntent.swift (Runner + Widget target)
-  └─ LiveActivityIntents mutate session + update ActivityKit in the app process
+  └─ LiveActivityIntent wrappers call the same mutations in the app process
 
 Flutter resumes
   └─ reads a newer widget-authored session.json revision → rebuilds → saves SQLite
@@ -69,14 +68,14 @@ channel การเขียน/อ่านจะ no-op และแอปห�
 
 ## Home Screen Widget — หน้าจริง
 
-ทุก action เป็น App Intent. Action ที่เปลี่ยน session ใช้
-`WStore.saveAndSync` ซึ่งทำสามอย่าง: save, reload widget timeline และ refresh
-Live Activity ถ้ามีอยู่ ทุก intent ที่แสดงใน Live Activity เป็น
-`LiveActivityIntent` และ compile เข้า Runner กับ widget target; intent สำหรับ
-หน้า Start/routine ที่มีเฉพาะ Home Screen widget ยังเป็น `AppIntent` ปกติ
+ทุก action เป็น App Intent. Home Screen widget ใช้ `AppIntent` ปกติใน extension
+เหมือน implementation เดิม ส่วน Live Activity เลือก intent คนละ type:
+`LiveActivityIntent` wrapper ที่รันใน Runner แล้ว dispatch เข้า mutation ชุด
+เดียวกัน การแยก type ทำให้ widget ไม่ถูกย้ายไปรันใน app process และยังคง
+response path เดิมไว้ ทั้งสองทางจบที่ `WStore.saveAndSync`: save, refresh Live
+Activity และ reload widget timeline
 
-ปุ่มบน Live Activity ครอบคลุมชุดควบคุมของหน้า Log/Rest ไม่รวม Start, Add,
-Filter หรือ Manage
+ปุ่มบน Live Activity ครอบคลุม Add, Filter, Log, Rest และ Manage โดยไม่รวม Start
 
 ### 1. Start
 
@@ -141,10 +140,11 @@ component แยกจาก widget เว้นแต่ข้อจำกั�
 1. Flutter foreground เรียก `startLiveActivity` เมื่อมี active workout; ถ้ามี
    activity อยู่แล้วจะ update แทนการสร้างซ้อน
 2. การแก้ draft จากแอปส่ง state ปัจจุบันไป Runner เพื่อ update
-3. ทุกปุ่มบน Live Activity รัน `LiveActivityIntent` ใน Runner process, เขียน
-   `session.json` และ update ActivityKit content state โดยตรง
-4. หลัง Activity update สำเร็จจึง reload Home Screen widget timeline; ตัวเลข
-   KG/REP ใช้ invalidation feedback ระหว่างรอ system redraw
+3. ทุกปุ่มบน Live Activity รัน wrapper `LiveActivityIntent` ใน Runner process,
+   แล้วเรียก mutation เดียวกับ widget เพื่อเขียน `session.json` และ update
+   ActivityKit content state
+4. หลัง Activity update สำเร็จจึง reload Home Screen widget timeline; KG/REP
+   ไม่ใช้ invalidation feedback หรือ numeric transition เพราะทำให้เกิดการกระพิบ
 5. finish/discard เรียก `endLiveActivity` และปิด activity แบบ immediate
 
 State ที่แสดงคือชื่อ routine/session, exercise ปัจจุบัน, `ท่า n/m`, set label,
@@ -159,6 +159,12 @@ Lock Screen ใช้ layout สูงประมาณ 158pt. Dynamic Island �
 Lock Screen. iPhone ที่ไม่มี Dynamic Island ไม่มี Live Activity แบบ persistent
 ตอนปลดล็อก จึงต้องใช้ Home Screen widget หากต้องการกดได้ตลอดโดยไม่ล็อกจอ
 
+Activity intents ตั้ง `authenticationPolicy = .alwaysAllowed` เพื่อขอให้ระบบ
+อนุญาตระหว่างล็อกเป็น best effort แต่ iOS เป็นผู้ตัดสิน authorization สุดท้าย
+และอาจยังบังคับ authenticate ตาม security policy ของ Live Activity. ปุ่มของ
+YouTube เป็น system Now Playing controls สำหรับ media playback ซึ่งเป็นคนละ API
+และไม่ควรนำมาใช้ปลอมเป็น workout control
+
 ## ไฟล์ implementation
 
 | ไฟล์ | หน้าที่ |
@@ -166,7 +172,7 @@ Lock Screen. iPhone ที่ไม่มี Dynamic Island ไม่มี Live
 | `gymmer_flutter/lib/data/widget_bridge.dart` | serialize catalog/routines/session, Live Activity state, อ่านกลับและ rebuild workout |
 | `gymmer_flutter/ios/Runner/AppDelegate.swift` | MethodChannel, App Group I/O, foreground ActivityKit manager |
 | `gymmer_flutter/ios/Runner/SceneDelegate.swift` | temporary App Group POC launch alert; ต้องลบก่อน release |
-| `gymmer_flutter/ios/GymmerWidget/GymmerWidget.swift` | widget/Activity views, shared store, notification, LiveActivityIntents และ Activity sync; backend compile เข้า Runner ด้วย |
+| `gymmer_flutter/ios/GymmerWidget/GymmerWidget.swift` | widget/Activity views, shared store/mutations, widget AppIntents, Live Activity wrapper และ Activity sync; backend compile เข้า Runner ด้วย |
 | `gymmer_flutter/ios/GymmerWidget/GymmerActivityAttributes.swift` | shared ActivityKit attributes/content state |
 | `gymmer_flutter/ios/GymmerWidget/GymmerNavigationIntent.swift` | shared page-navigation LiveActivityIntent ใน Runner + widget target |
 | `gymmer_flutter/ios/Runner.xcodeproj/project.pbxproj` | WidgetKit target, embed extension, shared source membership |
@@ -178,6 +184,8 @@ Lock Screen. iPhone ที่ไม่มี Dynamic Island ไม่มี Live
 
 - Widget รองรับเฉพาะ Medium; ไม่มี scrolling และไม่มี text/number entry
 - Live Activity จะทำงานไม่ได้ถ้าผู้ใช้ปิด Live Activities หรือ OS ไม่รองรับ
+- iOS อาจต้องการ Face ID/passcode ก่อนรันปุ่ม Live Activity แม้ intent ขอ
+  `alwaysAllowed`; แอปไม่สามารถ override system Lock Screen policy ได้
 - iPhone ที่ไม่มี Dynamic Island แสดง Live Activity แบบ persistent เฉพาะ Lock Screen
 - CI ไม่ทำ debug และ release compile ซ้ำใน event เดียว: PR ใช้ debug compile,
   push/manual ใช้ release build และ cache `build/ios`; การแก้เฉพาะเอกสารไม่

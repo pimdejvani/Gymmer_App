@@ -292,6 +292,20 @@ enum Num {
 
 // -- Navigation -------------------------------------------------------------
 
+@available(iOS 17.0, *)
+struct WidgetNavIntent: AppIntent {
+  static var title: LocalizedStringResource = "Navigate widget"
+  @Parameter(title: "page") var page: String
+  init() {}
+  init(_ page: String) { self.page = page }
+  func perform() async throws -> some IntentResult {
+    var s = WStore.loadSession()
+    s.ui.page = page
+    await WStore.saveAndSync(s)
+    return .result()
+  }
+}
+
 // -- Start page -------------------------------------------------------------
 
 @available(iOS 17.0, *)
@@ -739,44 +753,79 @@ extension WStore {
   }
 }
 
-// A LiveActivityIntent runs in the containing app process. Compile these
-// conformances into both targets so every Activity button can update the
-// running Activity immediately instead of relying on the extension process.
+/// Live Activity counterpart to the extension-side widget intents. It runs in
+/// Runner, but dispatches to the exact same mutation implementations.
 @available(iOS 17.0, *)
-extension AddExerciseIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension PickerAddSetIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension PickerRemoveSetIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension ListPageIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension FilterPageIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension SelectFilterIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension AdjustIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension CompleteSetIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension NextExerciseIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension RestAdjustIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension SkipRestIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension AddSetIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension RemoveSetIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension RemoveExerciseIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension FinishSessionIntent: LiveActivityIntent {}
-@available(iOS 17.0, *)
-extension DiscardIntent: LiveActivityIntent {}
+struct LiveMutationIntent: LiveActivityIntent {
+  static var title: LocalizedStringResource = "Update workout"
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+
+  @Parameter(title: "action") var action: String
+  @Parameter(title: "value") var value: String
+  @Parameter(title: "extra") var extra: String
+  @Parameter(title: "delta") var delta: Double
+
+  init() {}
+  init(action: String, value: String = "", extra: String = "", delta: Double = 0) {
+    self.action = action
+    self.value = value
+    self.extra = extra
+    self.delta = delta
+  }
+
+  func perform() async throws -> some IntentResult {
+    switch action {
+    case "addExercise": _ = try await AddExerciseIntent(value).perform()
+    case "pickerAddSet": _ = try await PickerAddSetIntent(value).perform()
+    case "pickerRemoveSet": _ = try await PickerRemoveSetIntent(value).perform()
+    case "listPage": _ = try await ListPageIntent(Int(delta)).perform()
+    case "filterPage": _ = try await FilterPageIntent(Int(delta)).perform()
+    case "selectFilter": _ = try await SelectFilterIntent(kind: value, value: extra).perform()
+    case "adjust": _ = try await AdjustIntent(field: value, delta: delta).perform()
+    case "completeSet": _ = try await CompleteSetIntent().perform()
+    case "nextExercise": _ = try await NextExerciseIntent().perform()
+    case "restAdjust": _ = try await RestAdjustIntent(Int(delta)).perform()
+    case "skipRest": _ = try await SkipRestIntent().perform()
+    case "addSet": _ = try await AddSetIntent().perform()
+    case "removeSet": _ = try await RemoveSetIntent().perform()
+    case "removeExercise": _ = try await RemoveExerciseIntent().perform()
+    case "finish": _ = try await FinishSessionIntent().perform()
+    case "discard": _ = try await DiscardIntent().perform()
+    default: break
+    }
+    return .result()
+  }
+}
 
 #if GYMMER_WIDGET_EXTENSION
 // MARK: - Timeline
+
+private struct SurfaceIntentButton<WidgetIntent: AppIntent, LiveIntent: AppIntent, Label: View>: View {
+  let isLiveActivity: Bool
+  let widgetIntent: WidgetIntent
+  let liveIntent: LiveIntent
+  let label: Label
+
+  init(
+    isLiveActivity: Bool,
+    widgetIntent: WidgetIntent,
+    liveIntent: LiveIntent,
+    @ViewBuilder label: () -> Label
+  ) {
+    self.isLiveActivity = isLiveActivity
+    self.widgetIntent = widgetIntent
+    self.liveIntent = liveIntent
+    self.label = label()
+  }
+
+  @ViewBuilder var body: some View {
+    if isLiveActivity {
+      Button(intent: liveIntent) { label }
+    } else {
+      Button(intent: widgetIntent) { label }
+    }
+  }
+}
 
 struct GymmerEntry: TimelineEntry {
   let date: Date
@@ -926,12 +975,13 @@ private func dimChevron(_ name: String) -> some View {
 
 private struct LogView: View {
   var entry: GymmerEntry
+  var isLiveActivity: Bool
   var body: some View {
     let s = entry.session
     if s.exercises.isEmpty {
       emptyState
     } else if restRemaining(s) > 0 {
-      RestView(entry: entry)
+      RestView(entry: entry, isLiveActivity: isLiveActivity)
     } else {
       logBody(s)
     }
@@ -940,7 +990,10 @@ private struct LogView: View {
   private var emptyState: some View {
     VStack(alignment: .leading, spacing: 9) {
       Header(title: "GYMMER", subtitle: "No exercises")
-      Button(intent: NavIntent("add")) { Pill(label: "เพิ่มท่า", bg: T.accent, fg: .black) }
+      SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                          widgetIntent: WidgetNavIntent("add"), liveIntent: NavIntent("add")) {
+        Pill(label: "เพิ่มท่า", bg: T.accent, fg: .black)
+      }
         .buttonStyle(.plain)
       Spacer(minLength: 0)
     }
@@ -961,7 +1014,8 @@ private struct LogView: View {
           .font(.system(size: 10)).foregroundColor(T.textSecondary).lineLimit(1)
         Spacer(minLength: 0)
         // Manage moved up to the header to free the control row.
-        Button(intent: NavIntent("manage")) {
+        SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                            widgetIntent: WidgetNavIntent("manage"), liveIntent: NavIntent("manage")) {
           Image(systemName: "ellipsis")
             .font(.system(size: 13, weight: .bold)).foregroundColor(T.textPrimary)
             .frame(width: 32, height: 26)
@@ -973,7 +1027,8 @@ private struct LogView: View {
         .font(.system(size: 10)).foregroundColor(T.textTertiary).lineLimit(1)
 
       if sessionComplete(s) {
-        Button(intent: FinishSessionIntent()) {
+        SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                            widgetIntent: FinishSessionIntent(), liveIntent: LiveMutationIntent(action: "finish")) {
           HStack(spacing: 6) {
             Image(systemName: "flag.checkered")
             Text("จบ session").font(.system(size: 15, weight: .bold))
@@ -990,8 +1045,11 @@ private struct LogView: View {
           HStack(spacing: 7) {
             hstepper(label: "REP", value: set.reps.isEmpty ? "0" : set.reps,
                      down: AdjustIntent(field: "rep", delta: -1),
-                     up: AdjustIntent(field: "rep", delta: 1))
-            Button(intent: NextExerciseIntent()) {
+                     up: AdjustIntent(field: "rep", delta: 1),
+                     liveDown: LiveMutationIntent(action: "adjust", value: "rep", delta: -1),
+                     liveUp: LiveMutationIntent(action: "adjust", value: "rep", delta: 1))
+            SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                                widgetIntent: NextExerciseIntent(), liveIntent: LiveMutationIntent(action: "nextExercise")) {
               Image(systemName: "chevron.right")
                 .font(.system(size: 16, weight: .bold)).foregroundColor(T.textPrimary)
                 .frame(width: 48).frame(maxHeight: .infinity)
@@ -1002,8 +1060,11 @@ private struct LogView: View {
           HStack(spacing: 7) {
             hstepper(label: "KG", value: set.kg.isEmpty ? "0" : set.kg,
                      down: AdjustIntent(field: "kg", delta: -2.5),
-                     up: AdjustIntent(field: "kg", delta: 2.5))
-            Button(intent: CompleteSetIntent()) {
+                     up: AdjustIntent(field: "kg", delta: 2.5),
+                     liveDown: LiveMutationIntent(action: "adjust", value: "kg", delta: -2.5),
+                     liveUp: LiveMutationIntent(action: "adjust", value: "kg", delta: 2.5))
+            SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                                widgetIntent: CompleteSetIntent(), liveIntent: LiveMutationIntent(action: "completeSet")) {
               Image(systemName: "checkmark")
                 .font(.system(size: 20, weight: .heavy)).foregroundColor(.black)
                 .frame(width: 48).frame(maxHeight: .infinity)
@@ -1018,17 +1079,27 @@ private struct LogView: View {
   }
 
   // Horizontal stepper: [ − ] [ label / value ] [ + ], filling its row height.
-  private func hstepper(label: String, value: String, down: some AppIntent, up: some AppIntent) -> some View {
+  private func hstepper(
+    label: String,
+    value: String,
+    down: some AppIntent,
+    up: some AppIntent,
+    liveDown: LiveMutationIntent,
+    liveUp: LiveMutationIntent
+  ) -> some View {
     HStack(spacing: 6) {
-      Button(intent: down) { hstepIcon("minus") }.buttonStyle(.plain)
+      SurfaceIntentButton(isLiveActivity: isLiveActivity, widgetIntent: down, liveIntent: liveDown) {
+        hstepIcon("minus")
+      }.buttonStyle(.plain)
       VStack(spacing: 0) {
         Text(label).font(.system(size: 9, weight: .semibold)).foregroundColor(T.textTertiary)
         Text(value).font(.system(size: 20, weight: .heavy, design: .rounded))
           .foregroundColor(T.textPrimary).lineLimit(1).minimumScaleFactor(0.6)
-          .contentTransition(.numericText()).invalidatableContent()
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      Button(intent: up) { hstepIcon("plus") }.buttonStyle(.plain)
+      SurfaceIntentButton(isLiveActivity: isLiveActivity, widgetIntent: up, liveIntent: liveUp) {
+        hstepIcon("plus")
+      }.buttonStyle(.plain)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .padding(.horizontal, 6).padding(.vertical, 4)
@@ -1047,6 +1118,7 @@ private struct LogView: View {
 
 private struct RestView: View {
   var entry: GymmerEntry
+  var isLiveActivity: Bool
   var body: some View {
     let s = entry.session
     // Clamp so the range is always valid even if the end is (just) in the past.
@@ -1062,15 +1134,27 @@ private struct RestView: View {
         .foregroundColor(T.accent)
         .frame(maxWidth: .infinity, alignment: .center)
       HStack(spacing: 6) {
-        Button(intent: RestAdjustIntent(-15)) { Pill(label: "−15", bg: T.surfaceHigh, fg: T.textPrimary) }
+        SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                            widgetIntent: RestAdjustIntent(-15), liveIntent: LiveMutationIntent(action: "restAdjust", delta: -15)) {
+          Pill(label: "−15", bg: T.surfaceHigh, fg: T.textPrimary)
+        }
           .buttonStyle(.plain)
-        Button(intent: RestAdjustIntent(15)) { Pill(label: "+15", bg: T.surfaceHigh, fg: T.textPrimary) }
+        SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                            widgetIntent: RestAdjustIntent(15), liveIntent: LiveMutationIntent(action: "restAdjust", delta: 15)) {
+          Pill(label: "+15", bg: T.surfaceHigh, fg: T.textPrimary)
+        }
           .buttonStyle(.plain)
         if allDone {
-          Button(intent: FinishSessionIntent()) { Pill(label: "จบ session", bg: T.accent, fg: .black) }
+          SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                              widgetIntent: FinishSessionIntent(), liveIntent: LiveMutationIntent(action: "finish")) {
+            Pill(label: "จบ session", bg: T.accent, fg: .black)
+          }
             .buttonStyle(.plain)
         } else {
-          Button(intent: SkipRestIntent()) { Pill(label: "ข้าม", bg: T.accent, fg: .black) }
+          SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                              widgetIntent: SkipRestIntent(), liveIntent: LiveMutationIntent(action: "skipRest")) {
+            Pill(label: "ข้าม", bg: T.accent, fg: .black)
+          }
             .buttonStyle(.plain)
         }
       }
@@ -1081,6 +1165,7 @@ private struct RestView: View {
 
 private struct AddView: View {
   var entry: GymmerEntry
+  var isLiveActivity: Bool
   private let perPage = 4
   var body: some View {
     let s = entry.session
@@ -1094,12 +1179,23 @@ private struct AddView: View {
 
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 6) {
-        Button(intent: NavIntent("fmuscle")) { filterBtn(s.ui.muscleFilter ?? "Muscle") }.buttonStyle(.plain)
-        Button(intent: NavIntent("fequip")) { filterBtn(s.ui.equipFilter ?? "Equip") }.buttonStyle(.plain)
+        SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                            widgetIntent: WidgetNavIntent("fmuscle"), liveIntent: NavIntent("fmuscle")) {
+          filterBtn(s.ui.muscleFilter ?? "Muscle")
+        }.buttonStyle(.plain)
+        SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                            widgetIntent: WidgetNavIntent("fequip"), liveIntent: NavIntent("fequip")) {
+          filterBtn(s.ui.equipFilter ?? "Equip")
+        }.buttonStyle(.plain)
         Spacer(minLength: 0)
         // Single right-pager that wraps back to page 0 past the last page.
-        Button(intent: ListPageIntent(hasMore ? 1 : -page)) { chevron("chevron.right") }.buttonStyle(.plain)
-        Button(intent: NavIntent("log")) {
+        SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                            widgetIntent: ListPageIntent(hasMore ? 1 : -page),
+                            liveIntent: LiveMutationIntent(action: "listPage", delta: Double(hasMore ? 1 : -page))) {
+          chevron("chevron.right")
+        }.buttonStyle(.plain)
+        SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                            widgetIntent: WidgetNavIntent("log"), liveIntent: NavIntent("log")) {
           Text("Done").font(.system(size: 12, weight: .bold)).foregroundColor(.black)
             .padding(.horizontal, 12).padding(.vertical, 6)
             .background(T.accent).clipShape(Capsule())
@@ -1116,10 +1212,14 @@ private struct AddView: View {
               // Already queued: split into two tap zones sharing one background.
               // Left circle = −1 set (removes the exercise at 1 set); right = +1 set.
               HStack(spacing: 5) {
-                Button(intent: PickerRemoveSetIntent(item.name)) {
+                SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                                    widgetIntent: PickerRemoveSetIntent(item.name),
+                                    liveIntent: LiveMutationIntent(action: "pickerRemoveSet", value: item.name)) {
                   queueBadge(order: qi + 1, sets: s.exercises[qi].sets.count)
                 }.buttonStyle(.plain)
-                Button(intent: PickerAddSetIntent(item.name)) {
+                SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                                    widgetIntent: PickerAddSetIntent(item.name),
+                                    liveIntent: LiveMutationIntent(action: "pickerAddSet", value: item.name)) {
                   cellText(item)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
@@ -1131,7 +1231,9 @@ private struct AddView: View {
               .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             } else {
               // Not queued: tap anywhere on the cell to add it (1 set).
-              Button(intent: AddExerciseIntent(item.name)) {
+              SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                                  widgetIntent: AddExerciseIntent(item.name),
+                                  liveIntent: LiveMutationIntent(action: "addExercise", value: item.name)) {
                 HStack(spacing: 5) {
                   plusBadge()
                   cellText(item)
@@ -1193,6 +1295,7 @@ private enum FilterCell { case all, value(String), empty }
 private struct FilterView: View {
   var entry: GymmerEntry
   var isMuscle: Bool
+  var isLiveActivity: Bool
   private let perPage = 8 // + the "All" cell = 9 cells (3×3), fixed each page
   var body: some View {
     let s = entry.session
@@ -1211,8 +1314,13 @@ private struct FilterView: View {
       HStack(spacing: 6) {
         Header(title: isMuscle ? "Filter · Muscle" : "Filter · Equip", subtitle: nil)
         // Single right-pager that wraps back to page 0 past the last page.
-        Button(intent: FilterPageIntent(hasMore ? 1 : -page)) { chevron("chevron.right") }.buttonStyle(.plain)
-        Button(intent: NavIntent("add")) {
+        SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                            widgetIntent: FilterPageIntent(hasMore ? 1 : -page),
+                            liveIntent: LiveMutationIntent(action: "filterPage", delta: Double(hasMore ? 1 : -page))) {
+          chevron("chevron.right")
+        }.buttonStyle(.plain)
+        SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                            widgetIntent: WidgetNavIntent("add"), liveIntent: NavIntent("add")) {
           Text("BACK").font(.system(size: 11, weight: .bold)).foregroundColor(T.textSecondary)
             .padding(.horizontal, 10).padding(.vertical, 5)
             .background(T.surfaceHigh).clipShape(Capsule())
@@ -1222,11 +1330,15 @@ private struct FilterView: View {
         ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
           switch cell {
           case .all:
-            Button(intent: SelectFilterIntent(kind: kind, value: "")) {
+            SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                                widgetIntent: SelectFilterIntent(kind: kind, value: ""),
+                                liveIntent: LiveMutationIntent(action: "selectFilter", value: kind)) {
               chip("All", on: selected == nil)
             }.buttonStyle(.plain)
           case .value(let v):
-            Button(intent: SelectFilterIntent(kind: kind, value: v)) {
+            SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                                widgetIntent: SelectFilterIntent(kind: kind, value: v),
+                                liveIntent: LiveMutationIntent(action: "selectFilter", value: kind, extra: v)) {
               chip(v, on: selected == v)
             }.buttonStyle(.plain)
           case .empty:
@@ -1270,27 +1382,47 @@ private struct FilterView: View {
 
 private struct ManageView: View {
   var entry: GymmerEntry
+  var isLiveActivity: Bool
   var body: some View {
     let s = entry.session
     let exName = s.currentExercise?.name ?? "—"
     VStack(alignment: .leading, spacing: 6) {
       HStack {
         Header(title: "Manage", subtitle: exName)
-        Button(intent: NavIntent("log")) {
+        SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                            widgetIntent: WidgetNavIntent("log"), liveIntent: NavIntent("log")) {
           Text("BACK").font(.system(size: 11, weight: .bold)).foregroundColor(T.textSecondary)
             .padding(.horizontal, 10).padding(.vertical, 5)
             .background(T.surfaceHigh).clipShape(Capsule())
         }.buttonStyle(.plain)
       }
       manageRow(title: "เซ็ต",
-                add: AnyView(Button(intent: AddSetIntent()) { miniPill("+ เพิ่ม", T.surfaceHigh, T.textPrimary) }.buttonStyle(.plain)),
-                remove: AnyView(Button(intent: RemoveSetIntent()) { miniPill("− ลบ", T.surfaceHigh, T.textPrimary) }.buttonStyle(.plain)))
+                add: AnyView(SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                                                 widgetIntent: AddSetIntent(), liveIntent: LiveMutationIntent(action: "addSet")) {
+                  miniPill("+ เพิ่ม", T.surfaceHigh, T.textPrimary)
+                }.buttonStyle(.plain)),
+                remove: AnyView(SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                                                    widgetIntent: RemoveSetIntent(), liveIntent: LiveMutationIntent(action: "removeSet")) {
+                  miniPill("− ลบ", T.surfaceHigh, T.textPrimary)
+                }.buttonStyle(.plain)))
       manageRow(title: "ท่า",
-                add: AnyView(Button(intent: NavIntent("add")) { miniPill("+ เพิ่ม", T.surfaceHigh, T.textPrimary) }.buttonStyle(.plain)),
-                remove: AnyView(Button(intent: RemoveExerciseIntent()) { miniPill("− ลบ", T.surfaceHigh, T.textPrimary) }.buttonStyle(.plain)))
+                add: AnyView(SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                                                 widgetIntent: WidgetNavIntent("add"), liveIntent: NavIntent("add")) {
+                  miniPill("+ เพิ่ม", T.surfaceHigh, T.textPrimary)
+                }.buttonStyle(.plain)),
+                remove: AnyView(SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                                                    widgetIntent: RemoveExerciseIntent(), liveIntent: LiveMutationIntent(action: "removeExercise")) {
+                  miniPill("− ลบ", T.surfaceHigh, T.textPrimary)
+                }.buttonStyle(.plain)))
       HStack(spacing: 6) {
-        Button(intent: FinishSessionIntent()) { Pill(label: "จบ session", bg: T.accent, fg: .black) }.buttonStyle(.plain)
-        Button(intent: DiscardIntent()) { Pill(label: "Discard", bg: T.surfaceHigh, fg: T.danger) }.buttonStyle(.plain)
+        SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                            widgetIntent: FinishSessionIntent(), liveIntent: LiveMutationIntent(action: "finish")) {
+          Pill(label: "จบ session", bg: T.accent, fg: .black)
+        }.buttonStyle(.plain)
+        SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                            widgetIntent: DiscardIntent(), liveIntent: LiveMutationIntent(action: "discard")) {
+          Pill(label: "Discard", bg: T.surfaceHigh, fg: T.danger)
+        }.buttonStyle(.plain)
       }
       Spacer(minLength: 0)
     }
@@ -1317,7 +1449,7 @@ private struct ManageView: View {
 struct GymmerWidgetEntryView: View {
   var entry: GymmerEntry
   var body: some View {
-    GymmerSessionPagesView(entry: entry, showStart: true)
+    GymmerSessionPagesView(entry: entry, showStart: true, isLiveActivity: false)
       .padding(12)
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       .containerBackground(T.bg, for: .widget)
@@ -1327,6 +1459,7 @@ struct GymmerWidgetEntryView: View {
 private struct GymmerSessionPagesView: View {
   var entry: GymmerEntry
   var showStart: Bool
+  var isLiveActivity: Bool
 
   @ViewBuilder var body: some View {
     let s = entry.session
@@ -1338,11 +1471,11 @@ private struct GymmerSessionPagesView: View {
       }
     } else {
       switch s.ui.page {
-      case "add": AddView(entry: entry)
-      case "fmuscle": FilterView(entry: entry, isMuscle: true)
-      case "fequip": FilterView(entry: entry, isMuscle: false)
-      case "manage": ManageView(entry: entry)
-      default: LogView(entry: entry)
+      case "add": AddView(entry: entry, isLiveActivity: isLiveActivity)
+      case "fmuscle": FilterView(entry: entry, isMuscle: true, isLiveActivity: isLiveActivity)
+      case "fequip": FilterView(entry: entry, isMuscle: false, isLiveActivity: isLiveActivity)
+      case "manage": ManageView(entry: entry, isLiveActivity: isLiveActivity)
+      default: LogView(entry: entry, isLiveActivity: isLiveActivity)
       }
     }
   }
@@ -1415,7 +1548,7 @@ private struct LiveActivityEntryView: View {
   }
 
   var body: some View {
-    GymmerSessionPagesView(entry: entry, showStart: false)
+    GymmerSessionPagesView(entry: entry, showStart: false, isLiveActivity: true)
       .padding(12)
       .frame(maxWidth: .infinity, minHeight: 158, alignment: .topLeading)
       .background(T.bg)

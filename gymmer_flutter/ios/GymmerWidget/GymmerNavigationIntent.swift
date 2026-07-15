@@ -9,6 +9,7 @@ import WidgetKit
 @available(iOS 17.0, *)
 struct NavIntent: LiveActivityIntent {
   static var title: LocalizedStringResource = "Navigate"
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
 
   @Parameter(title: "page") var page: String
 

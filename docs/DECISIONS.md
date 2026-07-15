@@ -82,14 +82,18 @@ WidgetKit use the same resolver.
 
 Only the foreground app starts the ActivityKit Live Activity. Flutter sends the
 current workout state through the `gymmer/widget` method channel; Runner starts,
-updates, or ends the activity. Every intent exposed inside the Live Activity is
-a shared `LiveActivityIntent` compiled into Runner and the widget target because
-Apple runs that intent in the app process. It mutates `session.json`, updates
-the ActivityKit content state, then reloads the home widget before returning.
-Start/routine-only home-widget intents remain ordinary `AppIntent`s.
+updates, or ends the activity. Activity controls use dedicated
+`LiveActivityIntent` wrappers compiled into Runner because Apple runs those
+intents in the app process. The wrappers dispatch to the same mutation
+implementations as the ordinary home-widget `AppIntent`s, then update ActivityKit
+and reload the home widget. Keeping distinct intent types preserves the original
+extension execution path and response behavior of the home widget.
 
 The companion target is iOS 17 and supports the medium home widget plus Lock
 Screen/Dynamic Island presentations. The Lock Screen and expanded Dynamic
 Island deliberately reuse the home widget's Add/Filter/Log/Rest/Manage surface
-and omit only Start. A device without Dynamic Island has no persistent unlocked
-Live Activity surface, so the Home Screen widget is the unlocked alternative.
+and omit only Start. Activity intents request the `alwaysAllowed` authentication
+policy as a best effort, but iOS owns Lock Screen authorization and may still
+require authentication. Now Playing controls are a separate media-only system.
+A device without Dynamic Island has no persistent unlocked Live Activity
+surface, so the Home Screen widget is the unlocked alternative.

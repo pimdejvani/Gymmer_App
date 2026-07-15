@@ -1282,47 +1282,53 @@ private struct LiveLockScreen: View {
   let state: GymmerActivityAttributes.ContentState
   let title: String
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack {
-        Text(title).font(.system(size: 13, weight: .heavy)).foregroundColor(T.accent).lineLimit(1)
+    VStack(alignment: .leading, spacing: 9) {
+      HStack(alignment: .firstTextBaseline) {
+        Text(title).font(.system(size: 15, weight: .heavy)).foregroundColor(T.accent).lineLimit(1)
         Spacer(minLength: 0)
         Text("ท่า \(state.exIndex)/\(state.exCount)")
-          .font(.system(size: 11)).foregroundColor(T.textSecondary)
+          .font(.system(size: 12)).foregroundColor(T.textSecondary)
       }
+      Rectangle().fill(T.hairline).frame(height: 1)
+
       if state.phase == "rest", let end = state.restEnds {
-        HStack(spacing: 10) {
-          Image(systemName: "hourglass").foregroundColor(T.accent)
-          Text("พัก").font(.system(size: 14, weight: .bold)).foregroundColor(T.textPrimary)
+        Spacer(minLength: 0)
+        HStack(spacing: 12) {
+          Image(systemName: "hourglass").font(.system(size: 22)).foregroundColor(T.accent)
+          Text("พัก").font(.system(size: 18, weight: .bold)).foregroundColor(T.textPrimary)
           Spacer(minLength: 0)
           Text(timerInterval: Date()...max(end, Date().addingTimeInterval(1)), countsDown: true)
-            .font(.system(size: 26, weight: .heavy, design: .rounded)).monospacedDigit()
+            .font(.system(size: 40, weight: .heavy, design: .rounded)).monospacedDigit()
             .foregroundColor(T.accent).multilineTextAlignment(.trailing)
-            .frame(maxWidth: 130)
+            .frame(maxWidth: 170)
         }
+        Spacer(minLength: 0)
       } else {
         HStack(alignment: .firstTextBaseline) {
-          Text(state.exName).font(.system(size: 15, weight: .bold))
-            .foregroundColor(T.textPrimary).lineLimit(1)
+          Text(state.exName.isEmpty ? "ยังไม่มีท่า" : state.exName)
+            .font(.system(size: 17, weight: .bold)).foregroundColor(T.textPrimary).lineLimit(1)
           Spacer(minLength: 0)
-          Text(state.setLabel).font(.system(size: 12, weight: .semibold)).foregroundColor(T.textSecondary)
+          Text(state.setLabel).font(.system(size: 13, weight: .semibold)).foregroundColor(T.textSecondary)
         }
-        HStack(spacing: 20) {
+        Spacer(minLength: 0)
+        HStack(spacing: 28) {
           metric("REP", state.reps.isEmpty ? "0" : state.reps)
           metric("KG", state.kg.isEmpty ? "0" : state.kg)
           Spacer(minLength: 0)
         }
-        if let prev = state.prev, !prev.isEmpty {
-          Text(prev).font(.system(size: 10)).foregroundColor(T.textTertiary).lineLimit(1)
-        }
+        Spacer(minLength: 0)
+        Text((state.prev?.isEmpty == false) ? state.prev! : "ไม่มีข้อมูลก่อนหน้า")
+          .font(.system(size: 11)).foregroundColor(T.textTertiary).lineLimit(1)
       }
     }
+    .frame(maxWidth: .infinity, minHeight: 158, alignment: .top)
   }
 
   private func metric(_ label: String, _ value: String) -> some View {
     VStack(alignment: .leading, spacing: 1) {
-      Text(label).font(.system(size: 9, weight: .semibold)).foregroundColor(T.textTertiary)
-      Text(value).font(.system(size: 22, weight: .heavy, design: .rounded))
-        .foregroundColor(T.textPrimary).lineLimit(1).minimumScaleFactor(0.6)
+      Text(label).font(.system(size: 10, weight: .semibold)).foregroundColor(T.textTertiary)
+      Text(value).font(.system(size: 32, weight: .heavy, design: .rounded))
+        .foregroundColor(T.textPrimary).lineLimit(1).minimumScaleFactor(0.5)
     }
   }
 }

@@ -104,8 +104,9 @@ Discard behavior:
 
 ## iOS Widget And Lock Screen Activity
 
-The iOS companion is available on the `ios` branch. It is an iOS 17 medium
-WidgetKit widget with six views/pages:
+The iOS companion is available on the `ios` branch. The app and companion
+targets require iOS 26. It provides a medium WidgetKit widget with six
+views/pages:
 
 - Start: start No Routine or page through routines supplied by the app.
 - Add: browse four exercises per page, add/remove an exercise, or adjust the
@@ -132,7 +133,7 @@ request `alwaysAllowed` and carry the exact `ActivityViewContext.activityID`, so
 an update or terminal action affects only the Activity that was tapped. iOS may
 still require Lock Screen authentication for the Live Activity surface.
 
-On iOS 18 and later, Gymmer publishes one configurable system Control. People
+Gymmer publishes one configurable system Control. People
 can add multiple copies to Control Center, the two Lock Screen control slots,
 or the Action button, then select KG +2.5, KG −2.5, REP +1, REP −1, Complete
 Set, Next Exercise, or Skip Rest for each copy. It uses the stable extension-
@@ -146,8 +147,8 @@ On iOS 26 and later, starting a Gymmer workout also requests workout-write
 authorization and starts an indoor traditional-strength `HKWorkoutSession`.
 Finish saves the native workout to HealthKit; Discard stops collection without
 creating a HealthKit workout. Recovery reconnects an active session after an
-iOS relaunch. Denied permission, unavailable HealthKit, and older iOS versions
-leave the normal Gymmer session fully functional.
+iOS relaunch. Denied permission or unavailable HealthKit leaves the normal
+Gymmer session fully functional.
 
 Finish and Discard write their terminal outcome and reload the home widget
 before awaiting immediate ActivityKit dismissal. A cold app launch reconciles

@@ -41,8 +41,8 @@ Remaining iOS items:
   `ios/Runner/SceneDelegate.swift` before treating the sideload build as a
   polished release. Keep runtime App Group discovery used by the app and
   widget because SideStore can rewrite the group identifier.
-- Test iOS 17 widget/Live Activity compatibility and iOS 18+ configurable
-  Controls on real devices after SideStore re-sign. Verify all seven Control
+- Test the iOS 26 widget, Live Activity, and configurable Controls on a real
+  device after SideStore re-sign. Verify all seven Control
   actions while locked, exact-Activity navigation, set/rest mutations,
   widget-to-app reconciliation, finish/discard, and notifications.
 - On an iOS 26 device, verify that SideStore grants the HealthKit entitlement,

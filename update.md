@@ -3,6 +3,11 @@
 Short log, newest first. Full historic detail is archived in `backup/`
 (gitignored) if ever needed.
 
+## 2026-07-16 — Minimum deployment target raised to iOS 26
+
+- Runner, GymmerWidget, and RunnerTests now all require iOS 26.0. CI continues
+  compiling against the current iOS 26 SDK on the `macos-26` runner.
+
 ## 2026-07-16 — Configurable locked controls + HealthKit + native tests
 
 - Removed the temporary voice/App Shortcut provider while preserving all

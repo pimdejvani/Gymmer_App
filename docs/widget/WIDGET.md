@@ -8,13 +8,13 @@
 - Home Screen WidgetKit widget: ขนาด **Medium (4×2)** เท่านั้น
 - Live Activity: Lock Screen และ expanded Dynamic Island ใช้หน้า Add / Filter /
   Log / Rest / Manage ชุดเดียวกับ widget โดยตัดเฉพาะหน้า Start
-- Configurable System Control บน iOS 18+: เพิ่ม control ซ้ำได้แล้วเลือก KG/REP
+- Configurable System Control: เพิ่ม control ซ้ำได้แล้วเลือก KG/REP
   +/−, Complete Set, Next Exercise หรือ Skip Rest สำหรับ Control Center,
   ช่องปุ่ม Lock Screen และ Action button
 - HealthKit บน iOS 26+: session แบบ traditional strength เริ่ม/จบพร้อม Gymmer
 
-Widget extension ตั้ง deployment target เป็น iOS 17 เพื่อใช้ interactive
-`Button(intent:)`. Flutter app ยังเป็นแอปหลักและยังรองรับ Android/web ในฐานะ
+Runner, Widget extension และ XCTest ตั้ง deployment target เป็น iOS 26.0
+ตรงกัน. Flutter app ยังเป็นแอปหลักและยังรองรับ Android/web ในฐานะ
 dev stand-in; companion นี้ทำงานเฉพาะ iOS
 
 ## ภาพรวมสถาปัตยกรรม

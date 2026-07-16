@@ -89,7 +89,7 @@ implementations as the ordinary home-widget `AppIntent`s, then update ActivityKi
 and reload the home widget. Keeping distinct intent types preserves the original
 extension execution path and response behavior of the home widget.
 
-The companion target is iOS 17 and supports the medium home widget plus Lock
+The companion target initially used iOS 17 and supports the medium home widget plus Lock
 Screen/Dynamic Island presentations. The Lock Screen and expanded Dynamic
 Island deliberately reuse the home widget's Add/Filter/Log/Rest/Manage surface
 and omit only Start. Activity intents request the `alwaysAllowed` authentication
@@ -105,7 +105,8 @@ locked-device workout actions. Gymmer exposes one `AppIntentControlConfiguration
 that people can add multiple times and configure as KG/REP +/−, Complete Set,
 Next Exercise, or Skip Rest. Its `alwaysAllowed` action dispatches to the same
 ordinary mutation intents as the home widget. This does not replace the richer
-Live Activity and remains availability-gated so iOS 17 behavior is unchanged.
+Live Activity. The source retains availability annotations, while the shipped
+build now requires iOS 26 per decision 17.
 
 Finish and Discard persist and request the home-widget redraw before awaiting
 ActivityKit dismissal. App startup must reconcile a newer widget-authored
@@ -137,3 +138,11 @@ XCTest redirects `WStore` into a temporary directory and exercises the same
 Swift intents shipped by the widget, Live Activity, and system Control. Flutter
 checks, native tests, and the unsigned iOS 26 build are separate parallel jobs;
 the publish job depends on all three so test speed and release gating coexist.
+
+## 17. (2026-07-16) All Apple targets require iOS 26
+
+Runner, GymmerWidget, and RunnerTests use deployment target iOS 26.0. The app is
+intentionally optimized for the current device OS and no longer promises iOS
+13–25 installation compatibility. CI continues compiling with the current iOS
+26 SDK on the `macos-26` runner. Existing availability annotations remain as
+local API documentation and do not change the deployment requirement.

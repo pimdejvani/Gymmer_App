@@ -91,7 +91,7 @@ flutter.bat run -d chrome                     # run the app
 ### iOS native companion
 | File | Contents |
 |---|---|
-| `ios/GymmerWidget/GymmerWidget.swift` | iOS 17 medium widget and Live Activity pages, shared JSON store/mutations, direct Activity-ID intent targeting, terminal dismissal, rest notification, and configurable iOS 18 system Control |
+| `ios/GymmerWidget/GymmerWidget.swift` | iOS 26 medium widget and Live Activity pages, shared JSON store/mutations, direct Activity-ID intent targeting, terminal dismissal, rest notification, and configurable system Control |
 | `ios/GymmerWidget/GymmerActivityAttributes.swift` | ActivityKit attributes/state shared by Runner and WidgetKit targets |
 | `ios/GymmerWidget/GymmerNavigationIntent.swift` | Page-navigation `LiveActivityIntent` shared by Runner and WidgetKit targets; persists the page and updates only its explicit Activity ID |
 | `ios/Runner/AppDelegate.swift` | Flutter method channel for App Group files, Live Activity start/update/end, and HealthKit start/stop lifecycle |

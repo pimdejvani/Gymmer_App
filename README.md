@@ -44,15 +44,16 @@ Activity for the Lock Screen and expanded Dynamic Island. Both use the App
 Group shared container; the Flutter app
 writes the exercise catalog, routines, and active-session snapshot, while the
 widget extension can mutate the session and the app reconciles those changes
-back into SQLite on resume. The widget requires iOS 17. The Live Activity uses
+back into SQLite on resume. The iOS app, widget, and Live Activity require iOS
+26. The Live Activity uses
 the same Add/Filter/Log/Rest/Manage surface as the widget, without Start. Home
 widget buttons retain their extension-side `AppIntent` path; Activity buttons
 use Runner-side `LiveActivityIntent` wrappers and share the same mutations.
 On iPhones without Dynamic Island, use the Home Screen widget for persistent
 unlocked controls; the Live Activity itself is persistent on the Lock Screen.
 iOS does not let an app bypass authentication for ordinary Live Activity
-buttons; media apps use the separate Now Playing system. On iOS 18+, Gymmer
-therefore provides one configurable system Control that can be added multiple
+buttons; media apps use the separate Now Playing system. Gymmer therefore
+provides one configurable system Control that can be added multiple
 times for KG/REP +/−, Complete Set, Next Exercise, or Skip Rest in Control
 Center, Lock Screen control slots, and the Action button. Each Live Activity
 intent also targets its exact Activity ID. On iOS 26+, Gymmer starts a native

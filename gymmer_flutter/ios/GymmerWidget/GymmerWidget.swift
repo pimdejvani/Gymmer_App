@@ -784,37 +784,22 @@ enum LiveSync {
 }
 
 extension WStore {
-  /// Save + mirror onto any running Live Activity, and nudge the home widget —
-  /// a tap on the Live Activity does NOT auto-reload widget timelines the way a
-  /// tap on the widget itself does.
+  /// Save + mirror onto the running Live Activity so the Lock Screen tracks an
+  /// edit made from the Activity itself (or from the app while backgrounded).
   @available(iOS 17.0, *)
   static func saveAndSync(_ session: Session, activityID: String? = nil) async {
     save(session)
-    // Submit the Control Center reload hint the instant the file is written,
-    // before awaiting ActivityKit. iOS still schedules the actual refresh on its
-    // own budget, but enqueuing early avoids stacking the ~ActivityKit round-trip
-    // in front of the hint.
-    if #available(iOS 18.0, *) { StatusControls.reload() }
     let target = activityID ?? LiveSync.targetActivityID
     if let target, !target.isEmpty {
-      // A Live Activity interaction is already waiting for this exact update.
-      // Prioritize it; home-widget interactions keep their original reload-first
-      // path so their proven response behavior doesn't regress.
       await LiveSync.refresh(activityID: target)
-      WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
     } else {
-      WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
       await LiveSync.refresh()
     }
   }
 
-  /// Terminal actions must redraw the home widget before awaiting ActivityKit.
-  /// Otherwise a slow/missing Activity can make Finish and Discard look stuck.
   @available(iOS 17.0, *)
   static func saveAndEnd(_ session: Session, activityID: String? = nil) async {
     save(session)
-    if #available(iOS 18.0, *) { StatusControls.reload() }
-    WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
     await LiveSync.end(activityID: activityID)
   }
 }
@@ -890,178 +875,6 @@ struct LiveMutationIntent: LiveActivityIntent {
 @available(iOS 17.0, *)
 extension LiveMutationIntent: TargetedLiveActivityIntent {}
 
-// This configurable intent is compiled into both Runner and the widget
-// extension. Keeping the intent outside the extension-only UI block lets the
-// native test target execute the exact Control Center mutation dispatcher.
-@available(iOS 18.0, *)
-enum GymmerWorkoutControlAction: String, AppEnum {
-  case completeSet
-  case kgUp
-  case kgDown
-  case repUp
-  case repDown
-  case nextExercise
-  case addSet
-  case removeSet
-
-  static var typeDisplayRepresentation = TypeDisplayRepresentation("Workout action")
-  static var caseDisplayRepresentations: [Self: DisplayRepresentation] = [
-    .completeSet: "Complete Set",
-    .kgUp: "Weight +2.5 kg",
-    .kgDown: "Weight −2.5 kg",
-    .repUp: "Reps +1",
-    .repDown: "Reps −1",
-    .nextExercise: "Next Exercise",
-    .addSet: "Add Set",
-    .removeSet: "Remove Set"
-  ]
-
-  var label: String {
-    switch self {
-    case .completeSet: return "Complete Set"
-    case .kgUp: return "KG +2.5"
-    case .kgDown: return "KG −2.5"
-    case .repUp: return "REP +1"
-    case .repDown: return "REP −1"
-    case .nextExercise: return "Next Exercise"
-    case .addSet: return "Set +"
-    case .removeSet: return "Set −"
-    }
-  }
-
-  var systemImage: String {
-    switch self {
-    case .completeSet: return "checkmark.circle.fill"
-    // KG uses the weight family, REP uses a distinct arrow family, so the two
-    // adjacent controls never render the same glyph even when text truncates.
-    case .kgUp: return "plus.circle"
-    case .kgDown: return "minus.circle"
-    case .repUp: return "arrow.up.circle"
-    case .repDown: return "arrow.down.circle"
-    case .nextExercise: return "chevron.right.circle"
-    case .addSet: return "plus.square"
-    case .removeSet: return "minus.square"
-    }
-  }
-}
-
-@available(iOS 18.0, *)
-struct GymmerWorkoutControlIntent: AppIntent, ControlConfigurationIntent {
-  static var title: LocalizedStringResource = "Workout Control"
-  static var description = IntentDescription("Control the active Gymmer session.")
-  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
-  static var supportedModes: IntentModes = [.background]
-
-  @Parameter(title: "Action") var action: GymmerWorkoutControlAction?
-
-  init() {}
-  init(action: GymmerWorkoutControlAction) { self.action = action }
-
-  var selectedAction: GymmerWorkoutControlAction {
-    action ?? .completeSet
-  }
-
-  func perform() async throws -> some IntentResult {
-    switch selectedAction {
-    case .completeSet: _ = try await CompleteSetIntent().perform()
-    case .kgUp: _ = try await AdjustIntent(field: "kg", delta: 2.5).perform()
-    case .kgDown: _ = try await AdjustIntent(field: "kg", delta: -2.5).perform()
-    case .repUp: _ = try await AdjustIntent(field: "rep", delta: 1).perform()
-    case .repDown: _ = try await AdjustIntent(field: "rep", delta: -1).perform()
-    case .nextExercise: _ = try await NextExerciseIntent().perform()
-    case .addSet: _ = try await AddSetIntent().perform()
-    case .removeSet: _ = try await RemoveSetIntent().perform()
-    }
-    return .result()
-  }
-}
-
-// MARK: - System control display state (Control Center)
-
-/// Kinds for the Control Center display controls; used both by the controls
-/// themselves and by the targeted reloads after each session mutation.
-enum GymmerControlKind {
-  static let kgRep = "com.gymmer.status.kgrep"
-  static let exercise = "com.gymmer.status.exercise"
-}
-
-/// Cheap snapshot of the active set for the Control Center display controls,
-/// built from session.json only (no catalog lookup) so the value provider stays
-/// fast while the device is locked.
-struct GymmerControlState {
-  var active: Bool
-  var exercise: String
-  var setPos: String
-  var kg: String
-  var reps: String
-  var muscle: String = ""
-
-  static let inactive = GymmerControlState(active: false, exercise: "", setPos: "", kg: "", reps: "")
-
-  static func from(_ s: Session) -> GymmerControlState {
-    guard s.active, let ex = s.currentExercise, !ex.sets.isEmpty else { return .inactive }
-    let si = min(max(ex.curSet, 0), ex.sets.count - 1)
-    let set = ex.sets[si]
-    return GymmerControlState(
-      active: true,
-      exercise: ex.name,
-      setPos: "Set \(si + 1)/\(ex.sets.count)",
-      kg: set.kg,
-      reps: set.reps,
-      muscle: ex.muscle
-    )
-  }
-
-  /// SF Symbol for the exercise display, chosen by the primary muscle region.
-  /// Control Center renders control glyphs as templated (monochrome) SF Symbols,
-  /// so the app's full-colour anatomy image can't appear here — the muscle group
-  /// picks the closest system symbol instead. Falls back to the strength-training
-  /// figure for idle state or an unmapped muscle.
-  var exerciseSymbol: String {
-    switch muscle {
-    case "Chest":
-      return "figure.strengthtraining.traditional"
-    case "Front Delt", "Side Delt", "Rear Delt":
-      return "figure.arms.open"
-    case "Biceps", "Triceps", "Forearms":
-      return "dumbbell.fill"
-    case "Traps", "Rhomboids", "Lats":
-      return "figure.strengthtraining.functional"
-    case "Abs":
-      return "figure.core.training"
-    case "Quads", "Hamstrings", "Glutes", "Calves":
-      return "figure.run"
-    default:
-      return "figure.strengthtraining.traditional"
-    }
-  }
-
-  /// "80 kg · 10 reps"; "— kg · — reps" when the current set has no value (never
-  /// invents zeroes); "No active workout" when idle.
-  var kgRepValue: String {
-    guard active else { return "No active workout" }
-    let k = kg.trimmingCharacters(in: .whitespaces).isEmpty ? "—" : kg
-    let r = reps.trimmingCharacters(in: .whitespaces).isEmpty ? "—" : reps
-    return "\(k) kg · \(r) reps"
-  }
-
-  /// "Bench Press · Set 2/4"; "No active workout" when idle.
-  var exerciseValue: String {
-    guard active else { return "No active workout" }
-    let name = exercise.trimmingCharacters(in: .whitespaces).isEmpty ? "Workout" : exercise
-    return setPos.isEmpty ? name : "\(name) · \(setPos)"
-  }
-}
-
-/// Reloads only the Gymmer status controls (not every control) after a mutation.
-@available(iOS 18.0, *)
-enum StatusControls {
-  static func reload() {
-    ControlCenter.shared.reloadControls(ofKind: GymmerControlKind.kgRep)
-    ControlCenter.shared.reloadControls(ofKind: GymmerControlKind.exercise)
-  }
-}
-
 #if GYMMER_WIDGET_EXTENSION
 // MARK: - Timeline
 
@@ -1109,36 +922,6 @@ struct GymmerEntry: TimelineEntry {
   let session: Session
   let catalog: [CatalogItem]
   let routines: [RoutineItem]
-}
-
-struct Provider: TimelineProvider {
-  func placeholder(in context: Context) -> GymmerEntry {
-    GymmerEntry(date: Date(), session: Session(), catalog: [], routines: [])
-  }
-  func getSnapshot(in context: Context, completion: @escaping (GymmerEntry) -> Void) {
-    completion(current())
-  }
-  func getTimeline(in context: Context, completion: @escaping (Timeline<GymmerEntry>) -> Void) {
-    let s = WStore.loadSession()
-    let cat = WStore.catalog()
-    let rts = WStore.routines()
-    // The rest countdown animates via SwiftUI Text(timerInterval:) — no need to
-    // pre-generate per-second entries (that hit the widget refresh budget and
-    // froze the timer on the 2nd rest). We only need one entry now, plus one at
-    // rest-end so the widget flips back to the Log page when the timer expires.
-    if s.active && s.ui.page == "log", let end = restEndDate(s), end.timeIntervalSinceNow > 0 {
-      let entries = [
-        GymmerEntry(date: Date(), session: s, catalog: cat, routines: rts),
-        GymmerEntry(date: end, session: s, catalog: cat, routines: rts),
-      ]
-      completion(Timeline(entries: entries, policy: .atEnd))
-    } else {
-      completion(Timeline(entries: [GymmerEntry(date: Date(), session: s, catalog: cat, routines: rts)], policy: .never))
-    }
-  }
-  private func current() -> GymmerEntry {
-    GymmerEntry(date: Date(), session: WStore.loadSession(), catalog: WStore.catalog(), routines: WStore.routines())
-  }
 }
 
 // MARK: - Reusable view pieces
@@ -1762,16 +1545,6 @@ private struct ManageView: View {
 
 // MARK: - Router / entry view
 
-struct GymmerWidgetEntryView: View {
-  var entry: GymmerEntry
-  var body: some View {
-    GymmerSessionPagesView(entry: entry, showStart: true, isLiveActivity: false)
-      .padding(12)
-      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-      .containerBackground(T.bg, for: .widget)
-  }
-}
-
 private struct GymmerSessionPagesView: View {
   var entry: GymmerEntry
   var showStart: Bool
@@ -1797,112 +1570,14 @@ private struct GymmerSessionPagesView: View {
   }
 }
 
-// MARK: - Widget
-
-struct GymmerWidget: Widget {
-  let kind = "GymmerWidget"
-  var body: some WidgetConfiguration {
-    StaticConfiguration(kind: kind, provider: Provider()) { entry in
-      GymmerWidgetEntryView(entry: entry)
-    }
-    .configurationDisplayName("Gymmer")
-    .description("Log your workout session")
-    .supportedFamilies([.systemMedium])
-  }
-}
-
 @main
 struct GymmerBundle: WidgetBundle {
   var body: some Widget {
-    GymmerWidget()
     GymmerLiveActivity()
-    if #available(iOS 18.0, *) {
-      GymmerWorkoutActionControl()
-      GymmerKgRepControl()
-      GymmerExerciseControl()
-    }
   }
 }
 
-// MARK: - System controls (Control Center / Lock Screen / Action button)
-
-@available(iOS 18.0, *)
-struct GymmerWorkoutActionControl: ControlWidget {
-  var body: some ControlWidgetConfiguration {
-    AppIntentControlConfiguration(
-      kind: "com.gymmer.workout-action",
-      intent: GymmerWorkoutControlIntent.self
-    ) { configuration in
-      ControlWidgetButton(action: configuration) {
-        Label {
-          Text(configuration.selectedAction.label)
-        } icon: {
-          Image(systemName: configuration.selectedAction.systemImage)
-        }
-      }
-    }
-    .displayName("Workout Action")
-    .description("Choose a workout action for Control Center, the Lock Screen, or Action button.")
-    .promptsForUserConfiguration()
-  }
-}
-
-// MARK: - System controls: dynamic status displays
-
-// Tapping a status display refreshes its value. It MUST stay background-only:
-// opening the app would request an unlock, defeating the locked-glance purpose.
-@available(iOS 18.0, *)
-struct RefreshStatusIntent: AppIntent {
-  static var title: LocalizedStringResource = "Refresh workout status"
-  static var description = IntentDescription("Refresh the Gymmer status shown in Control Center.")
-  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
-  static var supportedModes: IntentModes = [.background]
-  func perform() async throws -> some IntentResult {
-    StatusControls.reload()
-    return .result()
-  }
-}
-
-@available(iOS 18.0, *)
-struct GymmerStatusProvider: ControlValueProvider {
-  let previewValue = GymmerControlState(
-    active: true, exercise: "Bench Press", setPos: "Set 2/4", kg: "80", reps: "10", muscle: "Chest"
-  )
-  func currentValue() async throws -> GymmerControlState {
-    GymmerControlState.from(WStore.loadSession())
-  }
-}
-
-// The combined "80 kg · 10 reps" display. One control, one refresh action; iOS
-// may truncate the value string at smaller sizes, which is tolerated.
-@available(iOS 18.0, *)
-struct GymmerKgRepControl: ControlWidget {
-  var body: some ControlWidgetConfiguration {
-    StaticControlConfiguration(kind: GymmerControlKind.kgRep, provider: GymmerStatusProvider()) { state in
-      ControlWidgetButton(action: RefreshStatusIntent()) {
-        Label(state.kgRepValue, systemImage: "scalemass")
-      }
-    }
-    .displayName("Weight & reps")
-    .description("The current set's weight and reps.")
-  }
-}
-
-// The "Bench Press · Set 2/4" exercise + set-position display.
-@available(iOS 18.0, *)
-struct GymmerExerciseControl: ControlWidget {
-  var body: some ControlWidgetConfiguration {
-    StaticControlConfiguration(kind: GymmerControlKind.exercise, provider: GymmerStatusProvider()) { state in
-      ControlWidgetButton(action: RefreshStatusIntent()) {
-        Label(state.exerciseValue, systemImage: state.exerciseSymbol)
-      }
-    }
-    .displayName("Current exercise")
-    .description("The current exercise and set position.")
-  }
-}
-
-// MARK: - Live Activity (same pages as the widget, without Start)
+// MARK: - Live Activity (reuses the Add/Filter/Log/Manage pages, without Start)
 
 // The Lock Screen and expanded Dynamic Island use the same Add/Filter/Log/Manage
 // views and App Intents as the home widget; only the Start page is omitted.

@@ -95,6 +95,7 @@ final class RunnerTests: XCTestCase {
   func testConfigurableControlUsesSharedMutationPipeline() async throws {
     seedSession()
 
+    XCTAssertEqual(GymmerWorkoutControlIntent().selectedAction, .completeSet)
     _ = try await GymmerWorkoutControlIntent(action: .repUp).perform()
     _ = try await GymmerWorkoutControlIntent(action: .kgDown).perform()
 

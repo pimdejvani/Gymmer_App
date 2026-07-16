@@ -923,13 +923,17 @@ struct GymmerWorkoutControlIntent: AppIntent, ControlConfigurationIntent {
   static var description = IntentDescription("Control the active Gymmer session.")
   static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
 
-  @Parameter(title: "Action") var action: GymmerWorkoutControlAction
+  @Parameter(title: "Action") var action: GymmerWorkoutControlAction?
 
   init() {}
   init(action: GymmerWorkoutControlAction) { self.action = action }
 
+  var selectedAction: GymmerWorkoutControlAction {
+    action ?? .completeSet
+  }
+
   func perform() async throws -> some IntentResult {
-    switch action {
+    switch selectedAction {
     case .completeSet: _ = try await CompleteSetIntent().perform()
     case .kgUp: _ = try await AdjustIntent(field: "kg", delta: 2.5).perform()
     case .kgDown: _ = try await AdjustIntent(field: "kg", delta: -2.5).perform()
@@ -1674,9 +1678,9 @@ struct GymmerWorkoutActionControl: ControlWidget {
     ) { configuration in
       ControlWidgetButton(action: configuration) {
         Label {
-          Text(configuration.action.label)
+          Text(configuration.selectedAction.label)
         } icon: {
-          Image(systemName: configuration.action.systemImage)
+          Image(systemName: configuration.selectedAction.systemImage)
         }
       }
     }

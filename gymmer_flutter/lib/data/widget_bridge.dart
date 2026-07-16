@@ -157,15 +157,35 @@ class WidgetBridge {
     await _invokeVoid('startLiveActivity', liveActivityState(workout));
   }
 
+  /// Starts the native HealthKit workout session on iOS 26+. Earlier iOS
+  /// versions and non-iOS platforms deliberately no-op.
+  static Future<void> startHealthWorkout() async {
+    await _invokeVoid('startHealthWorkout');
+  }
+
+  /// Stops HealthKit tracking. Finished workouts are saved; discarded Gymmer
+  /// sessions tear down HealthKit collection without creating a workout entry.
+  static Future<void> stopHealthWorkout({required bool save}) async {
+    await _invokeVoid('stopHealthWorkout', {'save': save});
+  }
+
   /// Builds the Live Activity display fields from [w]: the current exercise is
   /// the first with an unlogged set (else the last), mirroring the widget.
   static Map<String, Object?> liveActivityState(ActiveWorkout w) {
     final title = w.routineName ?? w.sessionName;
     if (w.exercises.isEmpty) {
       return {
-        'title': title, 'phase': 'log', 'exName': '', 'exIndex': 0,
-        'exCount': 0, 'setLabel': '', 'kg': '', 'reps': '', 'prev': null,
-        'restEndsEpoch': null, 'page': 'log',
+        'title': title,
+        'phase': 'log',
+        'exName': '',
+        'exIndex': 0,
+        'exCount': 0,
+        'setLabel': '',
+        'kg': '',
+        'reps': '',
+        'prev': null,
+        'restEndsEpoch': null,
+        'page': 'log',
       };
     }
     var exIdx = w.exercises.indexWhere((e) => e.sets.any((s) => !s.completed));

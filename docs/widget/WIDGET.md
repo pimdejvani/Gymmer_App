@@ -8,8 +8,10 @@
 - Home Screen WidgetKit widget: ขนาด **Medium (4×2)** เท่านั้น
 - Live Activity: Lock Screen และ expanded Dynamic Island ใช้หน้า Add / Filter /
   Log / Rest / Manage ชุดเดียวกับ widget โดยตัดเฉพาะหน้า Start
-- System Controls บน iOS 18+: KG/REP +/−, Complete Set และ Next Exercise สำหรับ
-  Control Center, ช่องปุ่ม Lock Screen และ Action button
+- Configurable System Control บน iOS 18+: เพิ่ม control ซ้ำได้แล้วเลือก KG/REP
+  +/−, Complete Set, Next Exercise หรือ Skip Rest สำหรับ Control Center,
+  ช่องปุ่ม Lock Screen และ Action button
+- HealthKit บน iOS 26+: session แบบ traditional strength เริ่ม/จบพร้อม Gymmer
 
 Widget extension ตั้ง deployment target เป็น iOS 17 เพื่อใช้ interactive
 `Button(intent:)`. Flutter app ยังเป็นแอปหลักและยังรองรับ Android/web ในฐานะ
@@ -31,13 +33,16 @@ Flutter app
 GymmerWidget.swift
   ├─ reads the three JSON snapshots
   ├─ Home-widget AppIntents mutate session.json in the extension
-  └─ LiveSync.refresh() updates the running Live Activity
+  └─ LiveSync.refresh(activityID:) updates the explicitly targeted Activity
 
 GymmerWidget.swift backend + GymmerNavigationIntent.swift (Runner + Widget target)
   └─ LiveActivityIntent wrappers call the same mutations in the app process
 
 Flutter resumes
   └─ reads a newer widget-authored session.json revision → rebuilds → saves SQLite
+
+HealthWorkoutManager.swift (iOS 26+)
+  └─ Gymmer start/finish/discard ↔ HKWorkoutSession + HKLiveWorkoutBuilder
 ```
 
 App Group id ไม่ควร hard-code ตอนติดตั้งจริง เพราะ SideStore อาจ rewrite id
@@ -144,7 +149,8 @@ component แยกจาก widget เว้นแต่ข้อจำกั�
 2. การแก้ draft จากแอปส่ง state ปัจจุบันไป Runner เพื่อ update
 3. ทุกปุ่มบน Live Activity รัน wrapper `LiveActivityIntent` ใน Runner process,
    แล้วเรียก mutation เดียวกับ widget เพื่อเขียน `session.json` และ update
-   ActivityKit content state
+   ActivityKit content state โดยรับ `context.activityID` และเลือก Activity
+   ตรง ID แทนการวนแก้ทุก Activity
 4. หลัง Activity update สำเร็จจึง reload Home Screen widget timeline; KG/REP
    ไม่ใช้ invalidation feedback หรือ numeric transition เพราะทำให้เกิดการกระพิบ
 5. finish/discard เรียก `endLiveActivity` และปิด activity แบบ immediate
@@ -166,43 +172,49 @@ Lock Screen ใช้ layout สูงประมาณ 158pt. Dynamic Island �
 Lock Screen. iPhone ที่ไม่มี Dynamic Island ไม่มี Live Activity แบบ persistent
 ตอนปลดล็อก จึงต้องใช้ Home Screen widget หากต้องการกดได้ตลอดโดยไม่ล็อกจอ
 
-Activity intents ตั้ง `authenticationPolicy = .alwaysAllowed` เพื่อขอให้ระบบ
-อนุญาตระหว่างล็อกเป็น best effort แต่ iOS เป็นผู้ตัดสิน authorization สุดท้าย
-และอาจยังบังคับ authenticate ตาม security policy ของ Live Activity. ปุ่มของ
-YouTube เป็น system Now Playing controls สำหรับ media playback ซึ่งเป็นคนละ API
-และไม่ควรนำมาใช้ปลอมเป็น workout control
+Activity intents ตั้ง `authenticationPolicy = .alwaysAllowed` แต่เอกสารของ
+Apple ระบุว่าปุ่ม/สวิตช์ของ Live Activity บนเครื่องที่ล็อกอาจยัง inactive จน
+authenticate; แอป override policy นี้ไม่ได้. ปุ่มของ YouTube เป็น system Now
+Playing controls สำหรับ media playback ซึ่งเป็นคนละ API. เส้นทาง workout ที่
+ระบบรองรับโดยตรงจึงใช้ System Controls ด้านล่างร่วมกับ HealthKit session
 
 ### System Controls (iOS 18+)
 
-Widget bundle ประกาศ `ControlWidgetButton` หกรายการ: KG +2.5, KG −2.5,
-REP +1, REP −1, Complete Set และ Next Exercise. นี่เป็น system surface ที่ตรง
-กับแอปมากกว่า Now Playing: ผู้ใช้เพิ่ม control ที่ต้องการใน Control Center,
-ช่องปุ่ม Lock Screen หรือ Action button ได้เอง และ action reuse `AppIntent`
-เส้นทางเดียวกับ Home Widget พร้อม `alwaysAllowed`. พื้นที่ Lock Screen มีจำนวน
-ช่องจำกัด จึงไม่แทนหน้าเต็มของ Live Activity
+Widget bundle ประกาศ `GymmerWorkoutActionControl` รายการเดียวด้วย
+`AppIntentControlConfiguration`. ผู้ใช้เพิ่มได้หลาย instance แล้วกำหนดแต่ละ
+อันเป็น KG +2.5, KG −2.5, REP +1, REP −1, Complete Set, Next Exercise หรือ
+Skip Rest. ตัว action reuse `AppIntent` เส้นทางเดียวกับ Home Widget พร้อม
+`alwaysAllowed`. ระบบแสดง control นี้ใน Control Center, ช่องปุ่ม Lock Screen
+หรือ Action button; พื้นที่ Lock Screen มีจำนวนช่องจำกัด จึงไม่แทนหน้าเต็มของ
+Live Activity
 
-### Siri / App Shortcuts (iOS 17+)
+### HealthKit workout session (iOS 26+)
 
-Runner ประกาศ App Shortcuts หกรายการจาก action ชุดเดียวกับ System Controls
-จึงใช้ผ่าน Siri, Spotlight และแอป Shortcuts ได้ทันทีหลังติดตั้ง เช่น “Complete
-set in Gymmer”, “Add weight in Gymmer” และ “Next exercise in Gymmer”. Intent
-จะ no-op ถ้าไม่มี active session เพื่อไม่ให้คำสั่งเก่าหรือ control ที่ยังอยู่
-สร้าง session state ที่ผิดพลาด
+เมื่อเริ่ม workout จาก Flutter แอปจะขอสิทธิ์เขียน workout แล้วสร้าง
+`HKWorkoutSession` ประเภท `.traditionalStrengthTraining` แบบ indoor พร้อม
+`HKLiveWorkoutBuilder`. Finish ใช้ `stopActivity`, จบ collection และบันทึก
+workout ลง HealthKit; Discard เรียก `discardWorkout` โดยไม่สร้าง record.
+`SceneDelegate` รองรับ active-workout recovery และต่อ delegate กลับเมื่อ iOS
+เปิด process ใหม่. โค้ด availability-gated ทำให้ iOS รุ่นเก่าหรือเครื่องที่
+ปฏิเสธสิทธิ์ยังใช้ Gymmer/widget/Live Activity ได้ตามเดิม และไม่มี voice intent
+extension หรือ shortcut provider
 
 ## ไฟล์ implementation
 
 | ไฟล์ | หน้าที่ |
 |---|---|
-| `gymmer_flutter/lib/data/widget_bridge.dart` | serialize catalog/routines/session, Live Activity state, อ่านกลับและ rebuild workout |
-| `gymmer_flutter/ios/Runner/AppDelegate.swift` | MethodChannel, App Group I/O, foreground ActivityKit manager |
-| `gymmer_flutter/ios/Runner/SceneDelegate.swift` | temporary App Group POC launch alert; ต้องลบก่อน release |
+| `gymmer_flutter/lib/data/widget_bridge.dart` | serialize catalog/routines/session, Live Activity state, HealthKit lifecycle bridge, อ่านกลับและ rebuild workout |
+| `gymmer_flutter/ios/Runner/AppDelegate.swift` | MethodChannel, App Group I/O, ActivityKit manager และ HealthKit start/stop bridge |
+| `gymmer_flutter/ios/Runner/HealthWorkoutManager.swift` | iOS 26 HealthKit session/builder start, save, discard และ recovery |
+| `gymmer_flutter/ios/Runner/SceneDelegate.swift` | HealthKit active-workout recovery + temporary App Group POC alert |
 | `gymmer_flutter/ios/GymmerWidget/GymmerWidget.swift` | widget/Activity views, shared store/mutations, widget AppIntents, Live Activity wrapper และ Activity sync; backend compile เข้า Runner ด้วย |
 | `gymmer_flutter/ios/GymmerWidget/GymmerActivityAttributes.swift` | shared ActivityKit attributes/content state |
 | `gymmer_flutter/ios/GymmerWidget/GymmerNavigationIntent.swift` | shared page-navigation LiveActivityIntent ใน Runner + widget target |
 | `gymmer_flutter/ios/Runner.xcodeproj/project.pbxproj` | WidgetKit target, embed extension, shared source membership |
-| `gymmer_flutter/ios/Runner/Info.plist` | `NSSupportsLiveActivities` และ photo-library permission |
-| `gymmer_flutter/ios/Runner/Runner.entitlements` | Runner App Group entitlement |
+| `gymmer_flutter/ios/Runner/Info.plist` | Live Activities, HealthKit usage text/background mode และ photo-library permission |
+| `gymmer_flutter/ios/Runner/Runner.entitlements` | Runner App Group + HealthKit entitlements |
 | `gymmer_flutter/ios/GymmerWidget/GymmerWidget.entitlements` | extension App Group entitlement |
+| `gymmer_flutter/ios/RunnerTests/RunnerTests.swift` | native intent/control mutation tests บน temporary JSON store |
 
 ## ข้อจำกัดและรายการตรวจสอบก่อน release
 
@@ -213,16 +225,18 @@ set in Gymmer”, “Add weight in Gymmer” และ “Next exercise in Gymme
 - iPhone ที่ไม่มี Dynamic Island แสดง Live Activity แบบ persistent เฉพาะ Lock Screen
 - System Controls ต้องใช้ iOS 18+ และผู้ใช้ต้องเพิ่มเข้า Control Center/Lock
   Screen/Action button เอง แอปเพิ่มให้โดยอัตโนมัติไม่ได้
-- CI ไม่ทำ debug และ release compile ซ้ำใน event เดียว: PR ใช้ debug compile,
-  push/manual ใช้ release build และ cache `build/ios`; การแก้เฉพาะเอกสารไม่
-  trigger iOS build
+- HealthKit workout session บน iPhone/iPad ต้องใช้ iOS 26+ และ provisioning
+  profile ต้อง grant HealthKit; CI compile/test ไม่ยืนยันสิทธิ์หลัง SideStore
+  re-sign จึงต้องตรวจบนเครื่องจริง
+- CI ใช้ `macos-26`: Flutter analyze/tests, native XCTest และ release build รัน
+  เป็น jobs ขนานกัน แล้ว publish เมื่อทั้งหมดผ่าน; docs-only ไม่ trigger build
 - notification permission ต้องได้รับเพื่อให้ rest-end sound/vibration ทำงาน
 - App Group ต้องถูก grant ให้ทั้ง Runner และ extension หลัง SideStore re-sign
 - ลบ alert `App Group POC v2` จาก `SceneDelegate.swift`
 - ทดสอบบนเครื่องจริง: start จากแอปและ widget, reconcile widget → แอป, complete
   set/rest, finish, discard, และการ re-sign แล้วข้อมูลเดิมยังอยู่
-- CI มี debug compile check และ release build แต่ยังไม่แทนการทดสอบ widget บน
-  เครื่องจริง
+- Native XCTest ครอบคลุม mutation แต่ยังไม่แทนการทดสอบ Lock Screen control,
+  HealthKit permission/recovery และ SideStore entitlement บนเครื่องจริง
 
 ## Mockup เดิม
 

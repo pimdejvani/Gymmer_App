@@ -61,6 +61,19 @@ import ActivityKit
             LiveActivityManager.end()
             result(true)
           } else { result(false) }
+        case "startHealthWorkout":
+          if #available(iOS 26.0, *) {
+            Task { @MainActor in
+              result(await HealthWorkoutManager.shared.start())
+            }
+          } else { result(false) }
+        case "stopHealthWorkout":
+          if #available(iOS 26.0, *) {
+            let save = (call.arguments as? [String: Any])?["save"] as? Bool ?? true
+            Task { @MainActor in
+              result(HealthWorkoutManager.shared.stop(save: save))
+            }
+          } else { result(false) }
         default:
           result(FlutterMethodNotImplemented)
         }

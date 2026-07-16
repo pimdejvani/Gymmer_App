@@ -1,6 +1,6 @@
 # GYMMER Context
 
-Last reviewed: 2026-07-16 (`ios` branch, after intent-path separation).
+Last reviewed: 2026-07-16 (`ios` branch, configurable controls + HealthKit).
 
 GYMMER is a single-user offline workout tracker. Flutter only; the Swift
 project at repo root is dead legacy.
@@ -77,10 +77,16 @@ iteration). Desktop is out of scope.
   Activity controls use Runner-side `LiveActivityIntent` wrappers that dispatch
   to the same mutation implementations, so the widget keeps its original fast
   path while ActivityKit is refreshed from the app process.
-  On iOS 18+, six system controls expose KG/REP +/−, Complete Set, and Next
-  Exercise in Control Center, the Lock Screen control slots, and Action button.
-  The same six actions are preconfigured App Shortcuts on iOS 17+, making them
-  available to Siri, Spotlight, and the Shortcuts app without user setup.
+  Every Live Activity button carries `ActivityViewContext.activityID`, so its
+  Runner intent updates or ends only the Activity that was tapped. On iOS 18+,
+  one configurable system Control can be added multiple times and assigned to
+  KG/REP +/−, Complete Set, Next Exercise, or Skip Rest in Control Center, the
+  Lock Screen control slots, and Action button. No voice/shortcut integration
+  is published.
+- On iOS 26+, starting a Gymmer session also starts an indoor traditional-
+  strength `HKWorkoutSession`; Finish saves it to HealthKit and Discard drops
+  it. The lifecycle is availability-gated and the app remains functional when
+  HealthKit is unavailable or permission is denied.
 - Widget state is shared through `catalog.json`, `routines.json`, and
   `session.json`. The Flutter app reconciles widget-authored `session.json`
   revisions into SQLite when it resumes; widget/native failures are ignored on
@@ -91,7 +97,8 @@ iteration). Desktop is out of scope.
   routine folders no longer show a routine-count badge.
 - Delts/abs anatomy layers are rebuilt from an aligned real-colour plate (real
   fibre texture, no projection mismatch); see `docs/ANATOMY_STILLS.md`.
-- Verification last recorded: `flutter analyze` clean, `flutter test` (65
-  tests), and `flutter build web` all pass (2026-07-10). iOS CI now also has a
-  parallel debug compile check for the Runner + WidgetKit extension.
+- Verification last recorded: `flutter analyze` clean and `flutter test` (65
+  tests) pass (2026-07-16). CI runs Flutter checks, seven native XCTest intent
+  cases, and the iOS 26 release build in parallel, then publishes only if all
+  three jobs pass.
 - File layout: see `structure_file.md` (read that first each session).

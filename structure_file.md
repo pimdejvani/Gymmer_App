@@ -1,7 +1,7 @@
 # GYMMER Structure Map
 
 Read THIS FILE FIRST every session. It tells you which files to read for a
-given task — read only those. Last updated: 2026-07-15.
+given task — read only those. Last updated: 2026-07-16.
 
 App code root: `gymmer_flutter/lib/`. Run commands from `gymmer_flutter/`
 with `C:\Users\pimde\develop\flutter\bin\flutter.bat` (not on PATH).
@@ -48,7 +48,7 @@ flutter.bat run -d chrome                     # run the app
 | `lib/data/workout_store_factory.dart` | Conditional import: picks sqlite (io) or memory (web) |
 | `lib/data/seed_data.dart` | Seed exercises/routines. Anatomy rendering now uses `muscleMapNames`; seed exercise combo parsing is no longer required |
 | `lib/data/media_storage*.dart` | Copy exercise media into app-owned storage (io/stub pair) |
-| `lib/data/widget_bridge.dart` | iOS App Group bridge: writes catalog/routines/session JSON, starts or ends the Live Activity, and rebuilds widget-authored sessions on resume |
+| `lib/data/widget_bridge.dart` | iOS bridge: App Group catalog/routines/session JSON, Live Activity lifecycle, iOS 26 HealthKit lifecycle, and widget-authored session rebuild on resume |
 
 ### Screens (stateful pages; own store calls + dialogs)
 | File | Contents |
@@ -91,13 +91,15 @@ flutter.bat run -d chrome                     # run the app
 ### iOS native companion
 | File | Contents |
 |---|---|
-| `ios/GymmerWidget/GymmerWidget.swift` | iOS 17 medium widget and Live Activity pages, shared JSON store/mutations, widget/Activity intents, terminal dismissal, rest notification, Runner-side App Shortcuts, and iOS 18 system Controls |
+| `ios/GymmerWidget/GymmerWidget.swift` | iOS 17 medium widget and Live Activity pages, shared JSON store/mutations, direct Activity-ID intent targeting, terminal dismissal, rest notification, and configurable iOS 18 system Control |
 | `ios/GymmerWidget/GymmerActivityAttributes.swift` | ActivityKit attributes/state shared by Runner and WidgetKit targets |
-| `ios/GymmerWidget/GymmerNavigationIntent.swift` | Page-navigation `LiveActivityIntent` shared by Runner and WidgetKit targets; saves the page and updates ActivityKit from the app process |
-| `ios/Runner/AppDelegate.swift` | Flutter method channel for App Group files plus foreground Live Activity start/update/end |
-| `ios/Runner/SceneDelegate.swift` | Temporary App Group provisioning probe; remove the launch alert before release, keep runtime group discovery in AppDelegate/widget |
-| `ios/Runner/Info.plist` | Photo-library permission and `NSSupportsLiveActivities` declarations |
-| `ios/Runner/Runner.entitlements` / `ios/GymmerWidget/GymmerWidget.entitlements` | App Group entitlement requested by both targets; SideStore may rewrite the installed identifier |
+| `ios/GymmerWidget/GymmerNavigationIntent.swift` | Page-navigation `LiveActivityIntent` shared by Runner and WidgetKit targets; persists the page and updates only its explicit Activity ID |
+| `ios/Runner/AppDelegate.swift` | Flutter method channel for App Group files, Live Activity start/update/end, and HealthKit start/stop lifecycle |
+| `ios/Runner/HealthWorkoutManager.swift` | Availability-gated iOS 26 `HKWorkoutSession` + builder; starts, saves, discards, and reattaches recovered workouts |
+| `ios/Runner/SceneDelegate.swift` | iOS 26 active-workout recovery plus temporary App Group provisioning probe; remove only the alert before release |
+| `ios/Runner/Info.plist` | Photo-library, Live Activity, HealthKit usage, and background-processing declarations |
+| `ios/Runner/Runner.entitlements` | Runner App Group + HealthKit requests; SideStore may rewrite/re-provision installed entitlements |
+| `ios/GymmerWidget/GymmerWidget.entitlements` | Widget extension App Group request |
 
 ### Tests
 | File | Contents |
@@ -112,6 +114,7 @@ flutter.bat run -d chrome                     # run the app
 | `test/measurements_test.dart` | measurement CRUD (memory + sqlite upsert-by-date) + log-page widget flow |
 | `test/records_test.dart` | recordsIn / statsFor / exercisesWithHistory (pure Dart) |
 | `test/muscle_map_capture_test.dart` | Skipped-by-default PNG generator for the schematic painter → `test_muscle/` |
+| `ios/RunnerTests/RunnerTests.swift` | Native XCTest coverage for weight/reps, set completion, next exercise, rest skip, inactive guards, configurable control dispatch, finish, and discard |
 
 ### Tooling (offline, Node)
 | File | Contents |
@@ -125,7 +128,7 @@ flutter.bat run -d chrome                     # run the app
 ### Build & distribution (iOS, free sideload)
 | File | Contents |
 |---|---|
-| `.github/workflows/ios-build.yml` | CI on push to main/ios: builds unsigned iOS on a free `macos-15` runner, packages `Gymmer.ipa`, publishes a GitHub Release (`build-<run>`) + regenerates `apps.json`. Build number = run number → version auto-bumps to `1.0.<run>` |
+| `.github/workflows/ios-build.yml` | CI: Flutter checks, native intent XCTest, and unsigned iOS 26 build run in parallel; tested push builds publish `Gymmer.ipa`, Release `build-<run>`, and `apps.json`. Build number auto-bumps to `1.0.<run>` |
 | `apps.json` (repo root) | SideStore/AltStore source manifest → latest Release `.ipa`. Committed back by CI. Device subscribes for free OTA auto-updates. Source URL: `https://raw.githubusercontent.com/pimdejvani/Gymmer_App/ios/apps.json` |
 | `gymmer_flutter/ios/` | Generated iOS platform (bundle id `com.gymmer.gymmerFlutter`) plus the WidgetKit target. `flutter_launcher_icons` config + `assets/Gymmer_Logo.png` drive the app icon; photo permission and Live Activities are declared in `Runner/Info.plist` |
 
@@ -155,10 +158,10 @@ Flutter app ↔ AppDelegate.swift ↔ App Group container
                             reconciled into SQLite when Flutter resumes)
 
 Runner foreground → starts/updates/ends Live Activity
-LiveActivityIntent wrapper → Runner process → shared mutation → update ActivityKit
+LiveActivityIntent + activityID → Runner → shared mutation → update exact Activity
 Home-widget AppIntents → widget extension → same shared mutation → reload timeline
-iOS 18 Controls → Control Center / Lock Screen / Action button → widget AppIntents
-iOS 17 App Shortcuts → Siri / Spotlight / Shortcuts → same mutation intents
+iOS 18 configurable Control → chosen action → widget AppIntent mutation
+iOS 26 Gymmer session → HealthWorkoutManager → HealthKit save/discard/recovery
 ```
 
 State flows down as constructor params; mutations flow up as callbacks to

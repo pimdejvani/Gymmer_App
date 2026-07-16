@@ -1,71 +1,32 @@
-import Foundation
-import ActivityKit
 import AppIntents
-import WidgetKit
 
-/// Navigation is shared by the app and widget targets because Live Activity
-/// intents must run in the containing app's process. A plain AppIntent runs in
-/// the widget extension, where updating the active Activity isn't reliable.
+/// Navigation runs in the containing app for Live Activities. The Activity ID
+/// comes from ActivityViewContext so this tap updates only the surface that was
+/// actually used, while still persisting the shared widget session snapshot.
 @available(iOS 17.0, *)
-struct NavIntent: LiveActivityIntent {
+struct NavIntent: LiveActivityIntent, TargetedLiveActivityIntent {
   static var title: LocalizedStringResource = "Navigate"
   static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
 
   @Parameter(title: "page") var page: String
+  @Parameter(title: "activityID") var activityID: String
 
   init() {}
-  init(_ page: String) { self.page = page }
+  init(_ page: String, activityID: String = "") {
+    self.page = page
+    self.activityID = activityID
+  }
+
+  func targeting(activityID: String) -> Self {
+    var copy = self
+    copy.activityID = activityID
+    return copy
+  }
 
   func perform() async throws -> some IntentResult {
-    NavigationStore.save(page: page)
-
-    for activity in Activity<GymmerActivityAttributes>.activities {
-      var state = activity.content.state
-      state.page = page
-      await activity.update(
-        ActivityContent(state: state, staleDate: state.restEnds)
-      )
-    }
-    WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
+    var session = WStore.loadSession()
+    session.ui.page = page
+    await WStore.saveAndSync(session, activityID: activityID)
     return .result()
   }
-}
-
-private enum NavigationStore {
-  private static let fallbackGroup = "group.com.gymmer.gymmerFlutter"
-
-  static func save(page: String) {
-    guard let container = FileManager.default.containerURL(
-      forSecurityApplicationGroupIdentifier: resolvedGroupID
-    ) else { return }
-
-    let url = container.appendingPathComponent("session.json")
-    guard let data = try? Data(contentsOf: url),
-          var session = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-
-    var ui = session["ui"] as? [String: Any] ?? [:]
-    ui["page"] = page
-    session["ui"] = ui
-    session["by"] = "widget"
-    session["rev"] = Int64(Date().timeIntervalSince1970 * 1_000_000)
-
-    guard let updated = try? JSONSerialization.data(withJSONObject: session) else { return }
-    try? updated.write(to: url, options: .atomic)
-  }
-
-  private static let resolvedGroupID: String = {
-    guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
-          let data = try? Data(contentsOf: url),
-          let start = data.range(of: Data("<plist".utf8))?.lowerBound,
-          let end = data.range(of: Data("</plist>".utf8))?.upperBound else { return fallbackGroup }
-    let plistData = data.subdata(in: start..<end)
-    guard let object = try? PropertyListSerialization.propertyList(
-      from: plistData, options: [], format: nil
-    ),
-          let plist = object as? [String: Any],
-          let entitlements = plist["Entitlements"] as? [String: Any],
-          let groups = entitlements["com.apple.security.application-groups"] as? [String],
-          let first = groups.first else { return fallbackGroup }
-    return first
-  }()
 }

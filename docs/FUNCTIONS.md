@@ -128,25 +128,36 @@ Start is omitted. The foreground Flutter app starts or ends the activity. Home
 widget controls use ordinary extension-side `AppIntent`s. Activity controls use
 Runner-side `LiveActivityIntent` wrappers that call the same mutation code,
 persist the change, update ActivityKit, then reload the home widget. The wrappers
-request `alwaysAllowed`, but iOS may still require Lock Screen authentication.
+request `alwaysAllowed` and carry the exact `ActivityViewContext.activityID`, so
+an update or terminal action affects only the Activity that was tapped. iOS may
+still require Lock Screen authentication for the Live Activity surface.
 
-On iOS 18 and later, Gymmer publishes six system Controls: KG +2.5, KG −2.5,
-REP +1, REP −1, Complete Set, and Next Exercise. People add the controls they
-want to Control Center, the two Lock Screen control slots, or the Action button.
-These controls use the stable extension-side mutation path and do not require
-the app to present media playback.
+On iOS 18 and later, Gymmer publishes one configurable system Control. People
+can add multiple copies to Control Center, the two Lock Screen control slots,
+or the Action button, then select KG +2.5, KG −2.5, REP +1, REP −1, Complete
+Set, Next Exercise, or Skip Rest for each copy. It uses the stable extension-
+side mutation path with `alwaysAllowed` and does not require media playback.
 
-The same six fixed actions are App Shortcuts on iOS 17+. They appear without
-manual setup in Siri, Spotlight, and the Shortcuts app. Example phrases include
-“Complete set in Gymmer”, “Add weight in Gymmer”, and “Next exercise in
-Gymmer”. All high-frequency intents return without mutation when no workout is
-active, so stale system controls or spoken commands cannot create ghost state.
+All high-frequency intents return without mutation when no workout is active,
+so stale system controls cannot create ghost state. Gymmer does not publish a
+voice intent extension or preconfigured shortcut provider.
+
+On iOS 26 and later, starting a Gymmer workout also requests workout-write
+authorization and starts an indoor traditional-strength `HKWorkoutSession`.
+Finish saves the native workout to HealthKit; Discard stops collection without
+creating a HealthKit workout. Recovery reconnects an active session after an
+iOS relaunch. Denied permission, unavailable HealthKit, and older iOS versions
+leave the normal Gymmer session fully functional.
 
 Finish and Discard write their terminal outcome and reload the home widget
 before awaiting immediate ActivityKit dismissal. A cold app launch reconciles
 that terminal revision before restoring a SQLite draft.
 
 This companion is iOS-only and does not change the Android/web feature scope.
+
+Native XCTest coverage executes KG/REP changes, Complete Set, Next Exercise,
+Skip Rest, inactive-session guards, configurable-Control dispatch, and terminal
+outcomes against an isolated temporary JSON store.
 
 ## Completed Sets And Autofill
 

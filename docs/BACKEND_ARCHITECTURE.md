@@ -1,6 +1,6 @@
 # GYMMER Local Architecture
 
-Last reviewed: 2026-07-15.
+Last reviewed: 2026-07-16.
 
 GYMMER does not use a remote backend in the prototype. The backend boundary is an on-device local data layer built with SQLite from Flutter/Dart, plus app-owned file storage for exercise icons and media.
 
@@ -16,6 +16,9 @@ The local backend boundary is inside the app process:
 - On iOS, `WidgetBridge` mirrors selected state to a WidgetKit extension through
   an App Group container; this is a local IPC/snapshot boundary, not a remote
   backend.
+- On iOS 26+, Runner mirrors the active-session lifecycle into a HealthKit
+  workout session. HealthKit is a user-authorized system store, not Gymmer's
+  durable database and not a synchronization source for SQLite.
 
 Widgets do not own SQL rules.
 
@@ -57,6 +60,15 @@ operate without the app being foregrounded, but only the Flutter app finishes
 the widget-authored session into completed-history tables after reconciliation.
 
 Exercise thumbnail and media are picked from the device photo library (`image_picker`), then copied into app storage; only the resulting relative path/metadata is persisted. The app does not keep live references to Photos or external file picker locations. Compression and camera capture are out of prototype scope.
+
+## HealthKit Workout Projection
+
+On iOS 26+, starting a Gymmer workout requests workout-write authorization and
+starts an indoor traditional-strength `HKWorkoutSession` with an associated
+live builder. Finish saves the native workout; Discard drops builder results.
+Recovery reattaches delegates if iOS relaunches the app for an active workout.
+This projection does not read Gymmer history back from HealthKit and failure or
+denied permission never blocks the SQLite workout flow.
 
 ## Source Of Truth
 
@@ -111,11 +123,10 @@ columns.
 
 ## CI
 
-GitHub Actions runs from `gymmer_flutter`:
+GitHub Actions separates work into parallel jobs:
 
-- dependency restore
-- static analysis
-- widget and unit tests
-- parallel debug iOS compile check (Runner + WidgetKit extension)
-- release iOS build, unsigned IPA packaging, GitHub Release publication, and
-  SideStore `apps.json` regeneration on branch pushes
+- Ubuntu: dependency restore, static analysis, and Flutter widget/unit tests.
+- macOS 26: native XCTest against real App Intent implementations.
+- macOS 26: release iOS build and unsigned IPA packaging.
+- Push-only publish waits for every job, then creates the GitHub Release and
+  regenerates the SideStore `apps.json` manifest.

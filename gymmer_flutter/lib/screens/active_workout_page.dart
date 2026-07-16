@@ -28,12 +28,14 @@ class ActiveWorkoutPage extends StatefulWidget {
     required this.exercises,
     required this.onChanged,
     required this.onFinish,
+    required this.onDiscard,
   });
 
   final ActiveWorkout workout;
   final List<Exercise> exercises;
   final ValueChanged<ActiveWorkout> onChanged;
   final Future<void> Function(ActiveWorkout workout) onFinish;
+  final Future<void> Function() onDiscard;
 
   @override
   State<ActiveWorkoutPage> createState() => _ActiveWorkoutPageState();
@@ -181,7 +183,10 @@ class _ActiveWorkoutPageState extends State<ActiveWorkoutPage> {
         ],
       ),
     );
-    if (confirmed == true && mounted) Navigator.of(context).pop(true);
+    if (confirmed == true) {
+      await widget.onDiscard();
+      if (mounted) Navigator.of(context).pop(true);
+    }
   }
 
   void _completeSet(int exerciseIndex, WorkoutSet set) {

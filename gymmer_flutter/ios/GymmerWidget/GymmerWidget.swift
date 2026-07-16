@@ -201,8 +201,19 @@ struct RoutinesFile: Codable {
 // MARK: - Store
 
 enum WStore {
+#if DEBUG
+  /// XCTest redirects the shared JSON store to a temporary directory so intent
+  /// mutations can be verified without a provisioned App Group container.
+  static var containerURLOverride: URL?
+#endif
+
   private static func url(_ file: String) -> URL? {
-    AppGroup.containerURL?.appendingPathComponent(file)
+#if DEBUG
+    let container = containerURLOverride ?? AppGroup.containerURL
+#else
+    let container = AppGroup.containerURL
+#endif
+    return container?.appendingPathComponent(file)
   }
 
   static func loadSession() -> Session {
@@ -565,8 +576,10 @@ struct RestAdjustIntent: AppIntent {
 @available(iOS 17.0, *)
 struct SkipRestIntent: AppIntent {
   static var title: LocalizedStringResource = "Skip rest"
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
+    guard s.active else { return .result() }
     s.ui.restEndsAt = nil // curSet was already advanced when the set completed
     RestNotify.cancel()
     await WStore.saveAndSync(s)
@@ -627,12 +640,18 @@ struct RemoveExerciseIntent: AppIntent {
 @available(iOS 17.0, *)
 struct FinishSessionIntent: AppIntent {
   static var title: LocalizedStringResource = "Finish session"
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     s.active = false
     s.outcome = "finish"
     s.ui = WUI()
     RestNotify.cancel()
+#if !GYMMER_WIDGET_EXTENSION
+    if #available(iOS 26.0, *) {
+      _ = await HealthWorkoutManager.shared.stop(save: true)
+    }
+#endif
     await WStore.saveAndEnd(s)
     return .result()
   }
@@ -641,11 +660,17 @@ struct FinishSessionIntent: AppIntent {
 @available(iOS 17.0, *)
 struct DiscardIntent: AppIntent {
   static var title: LocalizedStringResource = "Discard session"
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
   func perform() async throws -> some IntentResult {
     var s = Session()
     s.active = false
     s.outcome = "discard"
     RestNotify.cancel()
+#if !GYMMER_WIDGET_EXTENSION
+    if #available(iOS 26.0, *) {
+      _ = await HealthWorkoutManager.shared.stop(save: false)
+    }
+#endif
     await WStore.saveAndEnd(s)
     return .result()
   }
@@ -693,6 +718,17 @@ func nextIncompleteExercise(_ s: Session, after i: Int) -> Int? {
 // widget or the Live Activity itself while the app is backgrounded.
 @available(iOS 17.0, *)
 enum LiveSync {
+  /// LiveActivityIntent execution is scoped to the Activity whose button was
+  /// tapped. Home-widget and Control Center intents leave this nil and retain
+  /// the existing behavior of refreshing every running Gymmer Activity.
+  @TaskLocal static var targetActivityID: String?
+
+  private static func activities(targeting activityID: String?) -> [Activity<GymmerActivityAttributes>] {
+    let running = Activity<GymmerActivityAttributes>.activities
+    guard let activityID, !activityID.isEmpty else { return running }
+    return running.filter { $0.id == activityID }
+  }
+
   static func contentState(_ s: Session) -> GymmerActivityAttributes.ContentState {
     let ei = s.safeExIndex
     let ex = s.currentExercise
@@ -722,24 +758,25 @@ enum LiveSync {
     )
   }
 
-  static func refresh() async {
+  static func refresh(activityID: String? = nil) async {
     let s = WStore.loadSession()
+    let targets = activities(targeting: activityID ?? targetActivityID)
     if s.active {
       let state = contentState(s)
       // staleDate = rest end: the system re-renders the Live Activity (isStale
       // flips) exactly when the countdown hits zero, so the view can fall back
       // to the log layout without any interaction.
       let content = ActivityContent(state: state, staleDate: state.restEnds)
-      for activity in Activity<GymmerActivityAttributes>.activities {
+      for activity in targets {
         await activity.update(content)
       }
     } else {
-      await endAll()
+      await end(activityID: activityID)
     }
   }
 
-  static func endAll() async {
-    for activity in Activity<GymmerActivityAttributes>.activities {
+  static func end(activityID: String? = nil) async {
+    for activity in activities(targeting: activityID ?? targetActivityID) {
       await activity.end(
         ActivityContent(state: activity.content.state, staleDate: nil),
         dismissalPolicy: .immediate
@@ -753,20 +790,27 @@ extension WStore {
   /// a tap on the Live Activity does NOT auto-reload widget timelines the way a
   /// tap on the widget itself does.
   @available(iOS 17.0, *)
-  static func saveAndSync(_ session: Session) async {
+  static func saveAndSync(_ session: Session, activityID: String? = nil) async {
     save(session)
     WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
-    await LiveSync.refresh()
+    await LiveSync.refresh(activityID: activityID)
   }
 
   /// Terminal actions must redraw the home widget before awaiting ActivityKit.
   /// Otherwise a slow/missing Activity can make Finish and Discard look stuck.
   @available(iOS 17.0, *)
-  static func saveAndEnd(_ session: Session) async {
+  static func saveAndEnd(_ session: Session, activityID: String? = nil) async {
     save(session)
     WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
-    await LiveSync.endAll()
+    await LiveSync.end(activityID: activityID)
   }
+}
+
+/// Allows the shared SwiftUI button wrapper to inject ActivityViewContext's
+/// exact ID without duplicating every workout mutation intent.
+@available(iOS 17.0, *)
+protocol TargetedLiveActivityIntent: AppIntent {
+  func targeting(activityID: String) -> Self
 }
 
 /// Live Activity counterpart to the extension-side widget intents. It runs in
@@ -780,94 +824,73 @@ struct LiveMutationIntent: LiveActivityIntent {
   @Parameter(title: "value") var value: String
   @Parameter(title: "extra") var extra: String
   @Parameter(title: "delta") var delta: Double
+  @Parameter(title: "activityID") var activityID: String
 
   init() {}
-  init(action: String, value: String = "", extra: String = "", delta: Double = 0) {
+  init(
+    action: String,
+    value: String = "",
+    extra: String = "",
+    delta: Double = 0,
+    activityID: String = ""
+  ) {
     self.action = action
     self.value = value
     self.extra = extra
     self.delta = delta
+    self.activityID = activityID
+  }
+
+  func targeting(activityID: String) -> Self {
+    var copy = self
+    copy.activityID = activityID
+    return copy
   }
 
   func perform() async throws -> some IntentResult {
-    switch action {
-    case "addExercise": _ = try await AddExerciseIntent(value).perform()
-    case "pickerAddSet": _ = try await PickerAddSetIntent(value).perform()
-    case "pickerRemoveSet": _ = try await PickerRemoveSetIntent(value).perform()
-    case "listPage": _ = try await ListPageIntent(Int(delta)).perform()
-    case "filterPage": _ = try await FilterPageIntent(Int(delta)).perform()
-    case "selectFilter": _ = try await SelectFilterIntent(kind: value, value: extra).perform()
-    case "adjust": _ = try await AdjustIntent(field: value, delta: delta).perform()
-    case "completeSet": _ = try await CompleteSetIntent().perform()
-    case "nextExercise": _ = try await NextExerciseIntent().perform()
-    case "restAdjust": _ = try await RestAdjustIntent(Int(delta)).perform()
-    case "skipRest": _ = try await SkipRestIntent().perform()
-    case "addSet": _ = try await AddSetIntent().perform()
-    case "removeSet": _ = try await RemoveSetIntent().perform()
-    case "removeExercise": _ = try await RemoveExerciseIntent().perform()
-    case "finish": _ = try await FinishSessionIntent().perform()
-    case "discard": _ = try await DiscardIntent().perform()
-    default: break
+    try await LiveSync.$targetActivityID.withValue(activityID) {
+      switch action {
+      case "addExercise": _ = try await AddExerciseIntent(value).perform()
+      case "pickerAddSet": _ = try await PickerAddSetIntent(value).perform()
+      case "pickerRemoveSet": _ = try await PickerRemoveSetIntent(value).perform()
+      case "listPage": _ = try await ListPageIntent(Int(delta)).perform()
+      case "filterPage": _ = try await FilterPageIntent(Int(delta)).perform()
+      case "selectFilter": _ = try await SelectFilterIntent(kind: value, value: extra).perform()
+      case "adjust": _ = try await AdjustIntent(field: value, delta: delta).perform()
+      case "completeSet": _ = try await CompleteSetIntent().perform()
+      case "nextExercise": _ = try await NextExerciseIntent().perform()
+      case "restAdjust": _ = try await RestAdjustIntent(Int(delta)).perform()
+      case "skipRest": _ = try await SkipRestIntent().perform()
+      case "addSet": _ = try await AddSetIntent().perform()
+      case "removeSet": _ = try await RemoveSetIntent().perform()
+      case "removeExercise": _ = try await RemoveExerciseIntent().perform()
+      case "finish": _ = try await FinishSessionIntent().perform()
+      case "discard": _ = try await DiscardIntent().perform()
+      default: break
+      }
     }
     return .result()
   }
 }
 
-#if !GYMMER_WIDGET_EXTENSION
-/// Zero-setup Siri/Spotlight/Shortcuts entry points for the same actions used
-/// by the widget and iOS 18 system Controls. The app-name token is required by
-/// App Shortcuts and lets the system substitute localized app-name synonyms.
-@available(iOS 17.0, *)
-struct GymmerAppShortcuts: AppShortcutsProvider {
-  static var appShortcuts: [AppShortcut] {
-    AppShortcut(
-      intent: CompleteSetIntent(),
-      phrases: [
-        "Complete set in \(.applicationName)",
-        "Finish this set in \(.applicationName)"
-      ],
-      shortTitle: "Complete Set",
-      systemImageName: "checkmark.circle.fill"
-    )
-    AppShortcut(
-      intent: AdjustIntent(field: "kg", delta: 2.5),
-      phrases: ["Add weight in \(.applicationName)"],
-      shortTitle: "Add Weight",
-      systemImageName: "plus.circle"
-    )
-    AppShortcut(
-      intent: AdjustIntent(field: "kg", delta: -2.5),
-      phrases: ["Reduce weight in \(.applicationName)"],
-      shortTitle: "Reduce Weight",
-      systemImageName: "minus.circle"
-    )
-    AppShortcut(
-      intent: AdjustIntent(field: "rep", delta: 1),
-      phrases: ["Add a rep in \(.applicationName)"],
-      shortTitle: "Add Rep",
-      systemImageName: "plus.circle"
-    )
-    AppShortcut(
-      intent: AdjustIntent(field: "rep", delta: -1),
-      phrases: ["Reduce a rep in \(.applicationName)"],
-      shortTitle: "Reduce Rep",
-      systemImageName: "minus.circle"
-    )
-    AppShortcut(
-      intent: NextExerciseIntent(),
-      phrases: ["Next exercise in \(.applicationName)"],
-      shortTitle: "Next Exercise",
-      systemImageName: "chevron.right.circle"
-    )
-  }
-
-}
-#endif
+extension LiveMutationIntent: TargetedLiveActivityIntent {}
 
 #if GYMMER_WIDGET_EXTENSION
 // MARK: - Timeline
 
-private struct SurfaceIntentButton<WidgetIntent: AppIntent, LiveIntent: AppIntent, Label: View>: View {
+private struct GymmerActivityIDKey: EnvironmentKey {
+  static let defaultValue = ""
+}
+
+private extension EnvironmentValues {
+  var gymmerActivityID: String {
+    get { self[GymmerActivityIDKey.self] }
+    set { self[GymmerActivityIDKey.self] = newValue }
+  }
+}
+
+private struct SurfaceIntentButton<WidgetIntent: AppIntent, LiveIntent: TargetedLiveActivityIntent, Label: View>: View {
+  @Environment(\.gymmerActivityID) private var activityID
   let isLiveActivity: Bool
   let widgetIntent: WidgetIntent
   let liveIntent: LiveIntent
@@ -887,7 +910,7 @@ private struct SurfaceIntentButton<WidgetIntent: AppIntent, LiveIntent: AppInten
 
   @ViewBuilder var body: some View {
     if isLiveActivity {
-      Button(intent: liveIntent) { label }
+      Button(intent: liveIntent.targeting(activityID: activityID)) { label }
     } else {
       Button(intent: widgetIntent) { label }
     }
@@ -1568,12 +1591,7 @@ struct GymmerBundle: WidgetBundle {
     GymmerWidget()
     GymmerLiveActivity()
     if #available(iOS 18.0, *) {
-      GymmerCompleteSetControl()
-      GymmerKGUpControl()
-      GymmerKGDownControl()
-      GymmerRepUpControl()
-      GymmerRepDownControl()
-      GymmerNextExerciseControl()
+      GymmerWorkoutActionControl()
     }
   }
 }
@@ -1581,80 +1599,92 @@ struct GymmerBundle: WidgetBundle {
 // MARK: - System controls (Control Center / Lock Screen / Action button)
 
 @available(iOS 18.0, *)
-struct GymmerCompleteSetControl: ControlWidget {
-  var body: some ControlWidgetConfiguration {
-    StaticControlConfiguration(kind: "com.gymmer.complete-set") {
-      ControlWidgetButton(action: CompleteSetIntent()) {
-        Label("Complete Set", systemImage: "checkmark.circle.fill")
-      }
+enum GymmerWorkoutControlAction: String, AppEnum {
+  case completeSet
+  case kgUp
+  case kgDown
+  case repUp
+  case repDown
+  case nextExercise
+  case skipRest
+
+  static var typeDisplayRepresentation = TypeDisplayRepresentation("Workout action")
+  static var caseDisplayRepresentations: [Self: DisplayRepresentation] = [
+    .completeSet: "Complete Set",
+    .kgUp: "Weight +2.5 kg",
+    .kgDown: "Weight −2.5 kg",
+    .repUp: "Reps +1",
+    .repDown: "Reps −1",
+    .nextExercise: "Next Exercise",
+    .skipRest: "Skip Rest"
+  ]
+
+  var label: String {
+    switch self {
+    case .completeSet: return "Complete Set"
+    case .kgUp: return "KG +2.5"
+    case .kgDown: return "KG −2.5"
+    case .repUp: return "REP +1"
+    case .repDown: return "REP −1"
+    case .nextExercise: return "Next Exercise"
+    case .skipRest: return "Skip Rest"
     }
-    .displayName("Complete Set")
-    .description("Complete the current workout set.")
+  }
+
+  var systemImage: String {
+    switch self {
+    case .completeSet: return "checkmark.circle.fill"
+    case .kgUp, .repUp: return "plus.circle"
+    case .kgDown, .repDown: return "minus.circle"
+    case .nextExercise: return "chevron.right.circle"
+    case .skipRest: return "forward.end.circle"
+    }
   }
 }
 
 @available(iOS 18.0, *)
-struct GymmerKGUpControl: ControlWidget {
-  var body: some ControlWidgetConfiguration {
-    StaticControlConfiguration(kind: "com.gymmer.kg-up") {
-      ControlWidgetButton(action: AdjustIntent(field: "kg", delta: 2.5)) {
-        Label("KG +2.5", systemImage: "plus.circle")
-      }
+struct GymmerWorkoutControlIntent: AppIntent, ControlConfigurationIntent {
+  static var title: LocalizedStringResource = "Workout Control"
+  static var description = IntentDescription("Control the active Gymmer session.")
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+
+  @Parameter(title: "Action") var action: GymmerWorkoutControlAction
+
+  init() {}
+  init(action: GymmerWorkoutControlAction) { self.action = action }
+
+  func perform() async throws -> some IntentResult {
+    switch action {
+    case .completeSet: _ = try await CompleteSetIntent().perform()
+    case .kgUp: _ = try await AdjustIntent(field: "kg", delta: 2.5).perform()
+    case .kgDown: _ = try await AdjustIntent(field: "kg", delta: -2.5).perform()
+    case .repUp: _ = try await AdjustIntent(field: "rep", delta: 1).perform()
+    case .repDown: _ = try await AdjustIntent(field: "rep", delta: -1).perform()
+    case .nextExercise: _ = try await NextExerciseIntent().perform()
+    case .skipRest: _ = try await SkipRestIntent().perform()
     }
-    .displayName("KG +2.5")
-    .description("Add 2.5 kg to the current set.")
+    return .result()
   }
 }
 
 @available(iOS 18.0, *)
-struct GymmerKGDownControl: ControlWidget {
+struct GymmerWorkoutActionControl: ControlWidget {
   var body: some ControlWidgetConfiguration {
-    StaticControlConfiguration(kind: "com.gymmer.kg-down") {
-      ControlWidgetButton(action: AdjustIntent(field: "kg", delta: -2.5)) {
-        Label("KG −2.5", systemImage: "minus.circle")
+    AppIntentControlConfiguration(
+      kind: "com.gymmer.workout-action",
+      intent: GymmerWorkoutControlIntent.self
+    ) { configuration in
+      ControlWidgetButton(action: configuration) {
+        Label {
+          Text(configuration.action.label)
+        } icon: {
+          Image(systemName: configuration.action.systemImage)
+        }
       }
     }
-    .displayName("KG −2.5")
-    .description("Subtract 2.5 kg from the current set.")
-  }
-}
-
-@available(iOS 18.0, *)
-struct GymmerRepUpControl: ControlWidget {
-  var body: some ControlWidgetConfiguration {
-    StaticControlConfiguration(kind: "com.gymmer.rep-up") {
-      ControlWidgetButton(action: AdjustIntent(field: "rep", delta: 1)) {
-        Label("REP +1", systemImage: "plus.circle")
-      }
-    }
-    .displayName("REP +1")
-    .description("Add one rep to the current set.")
-  }
-}
-
-@available(iOS 18.0, *)
-struct GymmerRepDownControl: ControlWidget {
-  var body: some ControlWidgetConfiguration {
-    StaticControlConfiguration(kind: "com.gymmer.rep-down") {
-      ControlWidgetButton(action: AdjustIntent(field: "rep", delta: -1)) {
-        Label("REP −1", systemImage: "minus.circle")
-      }
-    }
-    .displayName("REP −1")
-    .description("Subtract one rep from the current set.")
-  }
-}
-
-@available(iOS 18.0, *)
-struct GymmerNextExerciseControl: ControlWidget {
-  var body: some ControlWidgetConfiguration {
-    StaticControlConfiguration(kind: "com.gymmer.next-exercise") {
-      ControlWidgetButton(action: NextExerciseIntent()) {
-        Label("Next Exercise", systemImage: "chevron.right.circle")
-      }
-    }
-    .displayName("Next Exercise")
-    .description("Move to the next exercise with an incomplete set.")
+    .displayName("Workout Action")
+    .description("Choose a workout action for Control Center, the Lock Screen, or Action button.")
+    .promptsForUserConfiguration()
   }
 }
 
@@ -1666,12 +1696,14 @@ struct GymmerLiveActivity: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: GymmerActivityAttributes.self) { context in
       LiveActivityEntryView(state: context.state, title: context.attributes.title)
+        .environment(\.gymmerActivityID, context.activityID)
         .activityBackgroundTint(T.bg)
         .activitySystemActionForegroundColor(T.textPrimary)
     } dynamicIsland: { context in
       DynamicIsland {
         DynamicIslandExpandedRegion(.bottom) {
           LiveActivityEntryView(state: context.state, title: context.attributes.title)
+            .environment(\.gymmerActivityID, context.activityID)
         }
       } compactLeading: {
         Image(systemName: "dumbbell.fill").foregroundColor(T.accent)

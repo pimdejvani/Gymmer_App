@@ -109,6 +109,9 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
       // SQLite draft back, or startup would resurrect the ended session.
       await _reconcileWidgetSession();
       if (!mounted) return;
+      if (activeWorkout != null) {
+        unawaited(WidgetBridge.startHealthWorkout());
+      }
       _pushSessionToWidget(activeWorkout);
     } catch (error) {
       if (!mounted) return;
@@ -181,6 +184,9 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
       if (!mounted) return;
       activeWorkout?.dispose();
       setState(() => activeWorkout = null);
+      unawaited(
+        WidgetBridge.stopHealthWorkout(save: session['outcome'] == 'finish'),
+      );
       unawaited(WidgetBridge.syncLiveActivity(null));
       return;
     }
@@ -195,6 +201,7 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
     final previous = activeWorkout;
     setState(() => activeWorkout = rebuilt);
     previous?.dispose();
+    unawaited(WidgetBridge.startHealthWorkout());
     unawaited(WidgetBridge.syncLiveActivity(rebuilt));
   }
 
@@ -203,6 +210,7 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
       activeWorkout ??= ActiveWorkout.noRoutine();
     });
     _saveActiveWorkoutDraft(activeWorkout!);
+    unawaited(WidgetBridge.startHealthWorkout());
     _openActiveWorkout();
   }
 
@@ -216,6 +224,7 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
       );
     });
     _saveActiveWorkoutDraft(activeWorkout!);
+    unawaited(WidgetBridge.startHealthWorkout());
     _openActiveWorkout();
   }
 
@@ -358,8 +367,10 @@ class _GymmerHomeState extends State<GymmerHome> with WidgetsBindingObserver {
             final existing = await store?.loadCompletedWorkouts() ?? const [];
             finishedRecords = recordsIn(built, existing);
             await store?.finishWorkout(finishedWorkout);
+            await WidgetBridge.stopHealthWorkout(save: true);
             await _reloadFromStore();
           },
+          onDiscard: () => WidgetBridge.stopHealthWorkout(save: false),
         ),
       ),
     );

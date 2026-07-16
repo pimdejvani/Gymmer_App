@@ -18,9 +18,10 @@ Checks: `flutter.bat analyze`, `flutter.bat test`, `flutter.bat build web`.
 
 Work lives on branch `ios`. Every push to `main`/`ios` runs
 [`.github/workflows/ios-build.yml`](.github/workflows/ios-build.yml): builds an
-unsigned iOS `.ipa` on a free `macos-15` runner, publishes it as a GitHub
-Release, and regenerates [`apps.json`](apps.json) — a SideStore source. Build
-number = CI run number, so the version auto-bumps to `1.0.<run>` each push.
+unsigned iOS `.ipa` on a free `macos-26` runner. Flutter tests, native App
+Intent XCTests, and the release build run in parallel; a GitHub Release and
+[`apps.json`](apps.json) SideStore source are published only after all pass.
+Build number = CI run number, so the version auto-bumps to `1.0.<run>`.
 
 Install on an iPhone (one-time), all free:
 
@@ -49,13 +50,14 @@ widget buttons retain their extension-side `AppIntent` path; Activity buttons
 use Runner-side `LiveActivityIntent` wrappers and share the same mutations.
 On iPhones without Dynamic Island, use the Home Screen widget for persistent
 unlocked controls; the Live Activity itself is persistent on the Lock Screen.
-iOS can still require authentication for third-party Lock Screen interactions;
-media apps such as YouTube use the separate system Now Playing controls. On
-iOS 18+, Gymmer also provides system Controls for KG/REP +/−, Complete Set, and
-Next Exercise; users can add them to Control Center, Lock Screen control slots,
-or the Action button for direct system-owned access. The same actions are
-available as zero-setup App Shortcuts for Siri, Spotlight, and Shortcuts on
-iOS 17 and later.
+iOS does not let an app bypass authentication for ordinary Live Activity
+buttons; media apps use the separate Now Playing system. On iOS 18+, Gymmer
+therefore provides one configurable system Control that can be added multiple
+times for KG/REP +/−, Complete Set, Next Exercise, or Skip Rest in Control
+Center, Lock Screen control slots, and the Action button. Each Live Activity
+intent also targets its exact Activity ID. On iOS 26+, Gymmer starts a native
+HealthKit strength-workout session with the app session, saves it on Finish,
+and discards it on Discard. This does not add voice shortcuts.
 See [`docs/widget/WIDGET.md`](docs/widget/WIDGET.md) for the state contract,
 pages, and known release checks.
 

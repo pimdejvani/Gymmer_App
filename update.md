@@ -3,6 +3,25 @@
 Short log, newest first. Full historic detail is archived in `backup/`
 (gitignored) if ever needed.
 
+## 2026-07-16 — Configurable locked controls + HealthKit + native tests
+
+- Removed the temporary voice/App Shortcut provider while preserving all
+  widget, Live Activity, and system-Control features.
+- Replaced six fixed iOS 18 Controls with one configurable Control that can be
+  added multiple times and assigned to KG/REP +/−, Complete Set, Next Exercise,
+  or Skip Rest. It reuses the original home-widget mutation path and requests
+  `alwaysAllowed` execution.
+- Every Live Activity button now injects `ActivityViewContext.activityID` into
+  its intent. Updates, navigation, Finish, and Discard target that Activity
+  directly instead of iterating all running Gymmer activities.
+- Added an iOS 26 HealthKit workout lifecycle: indoor traditional-strength
+  session + live builder on Start, save on Finish, discard on Discard, and
+  active-session recovery after an iOS relaunch. Older iOS and denied HealthKit
+  permission remain non-blocking.
+- Added seven native XCTest cases for the shipped Swift intents and configurable
+  Control dispatcher. CI now runs Flutter checks, native tests, and the macOS 26
+  release build in parallel, then publishes only when every job passes.
+
 ## 2026-07-16 — Reliable session ending + iOS system Controls
 
 - Finish and Discard now persist the terminal revision and reload the Home
@@ -11,12 +30,8 @@ Short log, newest first. Full historic detail is archived in `backup/`
 - Cold startup now reconciles widget-authored state before writing the SQLite
   draft back to the App Group, preventing a finished/discarded session from
   being resurrected when the app process had been terminated.
-- Added iOS 18 system Controls for KG/REP +/−, Complete Set, and Next Exercise.
-  Users can place them in Control Center, the Lock Screen control slots, or on
-  the Action button; iOS 17 continues using the existing widget/Live Activity.
-- Added six zero-setup App Shortcuts for the same actions on iOS 17+, enabling
-  Siri, Spotlight, and Shortcuts without HealthKit permissions or duplicated
-  workout logic. These high-frequency intents now no-op if no session is active.
+- Added the first iOS 18 system-Control implementation for KG/REP +/−, Complete
+  Set, and Next Exercise. The current configurable form is described above.
 
 ## 2026-07-15 — iOS WidgetKit workout logger + Lock Screen Live Activity
 
@@ -50,8 +65,8 @@ Implemented on branch `ios` across the widget commits from `cdea8c8` through
   the app and extension continue to agree after SideStore rewrites the group
   identifier. The temporary `App Group POC v2` launch alert remains and is a
   release cleanup item in `next_step.md`.
-- CI now runs a parallel debug iOS compile check before/alongside the release
-  build, and cancels superseded runs per branch.
+- At this stage CI added a parallel debug iOS compile check and cancellation of
+  superseded branch runs; the current three-job gated pipeline is listed above.
 - Fixed Live Activity page navigation by moving `NavIntent` to a source file
   compiled into Runner and the widget target and adopting `LiveActivityIntent`.
   The expanded Dynamic Island now reuses the Lock Screen's interactive pages;

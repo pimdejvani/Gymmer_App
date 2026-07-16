@@ -28,6 +28,10 @@
 	<true/>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Gymmer uses HealthKit workout access to keep an active strength session available while the screen is locked.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Gymmer saves completed strength-training sessions to HealthKit.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Gymmer needs access to your photo library so you can add images and videos to your exercises.</string>
 	<key>UIApplicationSceneManifest</key>
@@ -53,6 +57,10 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>processing</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

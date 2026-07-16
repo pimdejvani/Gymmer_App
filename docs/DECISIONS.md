@@ -98,25 +98,42 @@ require authentication. Now Playing controls are a separate media-only system.
 A device without Dynamic Island has no persistent unlocked Live Activity
 surface, so the Home Screen widget is the unlocked alternative.
 
-## 13. (2026-07-16) High-frequency workout actions use iOS system Controls
+## 13. (2026-07-16) High-frequency actions use one configurable system Control
 
 iOS 18 Control Widgets are the appropriate system-owned, non-media surface for
-KG/REP adjustments, Complete Set, and Next Exercise. They reuse the ordinary
-widget mutation intents with `alwaysAllowed` and can be placed by the user in
-Control Center, the Lock Screen control slots, or on the Action button. They do
-not replace the richer Live Activity and are availability-gated so iOS 17 keeps
-the existing widget and Activity behavior.
+locked-device workout actions. Gymmer exposes one `AppIntentControlConfiguration`
+that people can add multiple times and configure as KG/REP +/−, Complete Set,
+Next Exercise, or Skip Rest. Its `alwaysAllowed` action dispatches to the same
+ordinary mutation intents as the home widget. This does not replace the richer
+Live Activity and remains availability-gated so iOS 17 behavior is unchanged.
 
 Finish and Discard persist and request the home-widget redraw before awaiting
 ActivityKit dismissal. App startup must reconcile a newer widget-authored
 terminal revision before pushing the SQLite draft, or an ended workout can be
 accidentally restored.
 
-## 14. (2026-07-16) Reuse mutation intents for hands-free App Shortcuts
+## 14. (2026-07-16) Live Activity mutations target an explicit Activity ID
 
-Complete Set, Next Exercise, and fixed KG/REP adjustments are published as six
-preconfigured App Shortcuts from the Runner target. This gives Siri, Spotlight,
-and Shortcuts access without duplicating workout rules or adding HealthKit
-permissions. Every shortcut includes Apple's required application-name token,
-uses the same `alwaysAllowed` intents as system Controls, and no-ops when there
-is no active session.
+Every Activity button receives `ActivityViewContext.activityID`. The shared
+button wrapper injects it into `LiveActivityIntent`; ActivityKit update/end then
+filters `Activity.activities` by that ID. Home-widget and system-Control intents
+leave the target empty and retain their existing all-running-activity refresh.
+The ID is task-local during dispatch, so every action still uses one mutation
+implementation and concurrent intents cannot leak a target into each other.
+
+## 15. (2026-07-16) HealthKit follows Gymmer's session lifecycle on iOS 26+
+
+On iOS 26 and later, the Runner starts an indoor traditional-strength
+`HKWorkoutSession` and associated live builder when a Gymmer session starts.
+Finish stops collection and saves the HealthKit workout; Discard calls
+`discardWorkout`. Recovery reattaches the session and builder delegates if iOS
+relaunches the app. The integration requests only workout write access and is
+availability/permission tolerant. No voice intent extension or shortcut
+provider is part of this architecture.
+
+## 16. (2026-07-16) CI tests native intents before publishing
+
+XCTest redirects `WStore` into a temporary directory and exercises the same
+Swift intents shipped by the widget, Live Activity, and system Control. Flutter
+checks, native tests, and the unsigned iOS 26 build are separate parallel jobs;
+the publish job depends on all three so test speed and release gating coexist.

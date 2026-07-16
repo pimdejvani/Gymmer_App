@@ -201,18 +201,12 @@ struct RoutinesFile: Codable {
 // MARK: - Store
 
 enum WStore {
-#if DEBUG
   /// XCTest redirects the shared JSON store to a temporary directory so intent
   /// mutations can be verified without a provisioned App Group container.
   static var containerURLOverride: URL?
-#endif
 
   private static func url(_ file: String) -> URL? {
-#if DEBUG
     let container = containerURLOverride ?? AppGroup.containerURL
-#else
-    let container = AppGroup.containerURL
-#endif
     return container?.appendingPathComponent(file)
   }
 
@@ -875,6 +869,78 @@ struct LiveMutationIntent: LiveActivityIntent {
 
 @available(iOS 17.0, *)
 extension LiveMutationIntent: TargetedLiveActivityIntent {}
+
+// This configurable intent is compiled into both Runner and the widget
+// extension. Keeping the intent outside the extension-only UI block lets the
+// native test target execute the exact Control Center mutation dispatcher.
+@available(iOS 18.0, *)
+enum GymmerWorkoutControlAction: String, AppEnum {
+  case completeSet
+  case kgUp
+  case kgDown
+  case repUp
+  case repDown
+  case nextExercise
+  case skipRest
+
+  static var typeDisplayRepresentation = TypeDisplayRepresentation("Workout action")
+  static var caseDisplayRepresentations: [Self: DisplayRepresentation] = [
+    .completeSet: "Complete Set",
+    .kgUp: "Weight +2.5 kg",
+    .kgDown: "Weight −2.5 kg",
+    .repUp: "Reps +1",
+    .repDown: "Reps −1",
+    .nextExercise: "Next Exercise",
+    .skipRest: "Skip Rest"
+  ]
+
+  var label: String {
+    switch self {
+    case .completeSet: return "Complete Set"
+    case .kgUp: return "KG +2.5"
+    case .kgDown: return "KG −2.5"
+    case .repUp: return "REP +1"
+    case .repDown: return "REP −1"
+    case .nextExercise: return "Next Exercise"
+    case .skipRest: return "Skip Rest"
+    }
+  }
+
+  var systemImage: String {
+    switch self {
+    case .completeSet: return "checkmark.circle.fill"
+    case .kgUp, .repUp: return "plus.circle"
+    case .kgDown, .repDown: return "minus.circle"
+    case .nextExercise: return "chevron.right.circle"
+    case .skipRest: return "forward.end.circle"
+    }
+  }
+}
+
+@available(iOS 18.0, *)
+struct GymmerWorkoutControlIntent: AppIntent, ControlConfigurationIntent {
+  static var title: LocalizedStringResource = "Workout Control"
+  static var description = IntentDescription("Control the active Gymmer session.")
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+
+  @Parameter(title: "Action") var action: GymmerWorkoutControlAction
+
+  init() {}
+  init(action: GymmerWorkoutControlAction) { self.action = action }
+
+  func perform() async throws -> some IntentResult {
+    switch action {
+    case .completeSet: _ = try await CompleteSetIntent().perform()
+    case .kgUp: _ = try await AdjustIntent(field: "kg", delta: 2.5).perform()
+    case .kgDown: _ = try await AdjustIntent(field: "kg", delta: -2.5).perform()
+    case .repUp: _ = try await AdjustIntent(field: "rep", delta: 1).perform()
+    case .repDown: _ = try await AdjustIntent(field: "rep", delta: -1).perform()
+    case .nextExercise: _ = try await NextExerciseIntent().perform()
+    case .skipRest: _ = try await SkipRestIntent().perform()
+    }
+    return .result()
+  }
+}
 
 #if GYMMER_WIDGET_EXTENSION
 // MARK: - Timeline
@@ -1598,75 +1664,6 @@ struct GymmerBundle: WidgetBundle {
 }
 
 // MARK: - System controls (Control Center / Lock Screen / Action button)
-
-@available(iOS 18.0, *)
-enum GymmerWorkoutControlAction: String, AppEnum {
-  case completeSet
-  case kgUp
-  case kgDown
-  case repUp
-  case repDown
-  case nextExercise
-  case skipRest
-
-  static var typeDisplayRepresentation = TypeDisplayRepresentation("Workout action")
-  static var caseDisplayRepresentations: [Self: DisplayRepresentation] = [
-    .completeSet: "Complete Set",
-    .kgUp: "Weight +2.5 kg",
-    .kgDown: "Weight −2.5 kg",
-    .repUp: "Reps +1",
-    .repDown: "Reps −1",
-    .nextExercise: "Next Exercise",
-    .skipRest: "Skip Rest"
-  ]
-
-  var label: String {
-    switch self {
-    case .completeSet: return "Complete Set"
-    case .kgUp: return "KG +2.5"
-    case .kgDown: return "KG −2.5"
-    case .repUp: return "REP +1"
-    case .repDown: return "REP −1"
-    case .nextExercise: return "Next Exercise"
-    case .skipRest: return "Skip Rest"
-    }
-  }
-
-  var systemImage: String {
-    switch self {
-    case .completeSet: return "checkmark.circle.fill"
-    case .kgUp, .repUp: return "plus.circle"
-    case .kgDown, .repDown: return "minus.circle"
-    case .nextExercise: return "chevron.right.circle"
-    case .skipRest: return "forward.end.circle"
-    }
-  }
-}
-
-@available(iOS 18.0, *)
-struct GymmerWorkoutControlIntent: AppIntent, ControlConfigurationIntent {
-  static var title: LocalizedStringResource = "Workout Control"
-  static var description = IntentDescription("Control the active Gymmer session.")
-  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
-
-  @Parameter(title: "Action") var action: GymmerWorkoutControlAction
-
-  init() {}
-  init(action: GymmerWorkoutControlAction) { self.action = action }
-
-  func perform() async throws -> some IntentResult {
-    switch action {
-    case .completeSet: _ = try await CompleteSetIntent().perform()
-    case .kgUp: _ = try await AdjustIntent(field: "kg", delta: 2.5).perform()
-    case .kgDown: _ = try await AdjustIntent(field: "kg", delta: -2.5).perform()
-    case .repUp: _ = try await AdjustIntent(field: "rep", delta: 1).perform()
-    case .repDown: _ = try await AdjustIntent(field: "rep", delta: -1).perform()
-    case .nextExercise: _ = try await NextExerciseIntent().perform()
-    case .skipRest: _ = try await SkipRestIntent().perform()
-    }
-    return .result()
-  }
-}
 
 @available(iOS 18.0, *)
 struct GymmerWorkoutActionControl: ControlWidget {

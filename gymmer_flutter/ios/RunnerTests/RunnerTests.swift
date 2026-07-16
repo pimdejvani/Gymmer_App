@@ -1,6 +1,7 @@
 import XCTest
 @testable import Runner
 
+@available(iOS 17.0, *)
 final class RunnerTests: XCTestCase {
   private var storeURL: URL!
 

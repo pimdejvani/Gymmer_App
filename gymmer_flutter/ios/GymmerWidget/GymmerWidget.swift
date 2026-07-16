@@ -586,10 +586,11 @@ struct SkipRestIntent: AppIntent {
 @available(iOS 17.0, *)
 struct AddSetIntent: AppIntent {
   static var title: LocalizedStringResource = "Add set"
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     let ei = s.safeExIndex
-    guard !s.exercises.isEmpty else { return .result() }
+    guard s.active, !s.exercises.isEmpty else { return .result() }
     var ex = s.exercises[ei]
     let last = ex.sets.last
     ex.sets.append(WSet(kg: last?.kg ?? "", reps: last?.reps ?? "", prev: last?.prev))
@@ -602,12 +603,15 @@ struct AddSetIntent: AppIntent {
 @available(iOS 17.0, *)
 struct RemoveSetIntent: AppIntent {
   static var title: LocalizedStringResource = "Remove set"
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     let ei = s.safeExIndex
-    guard !s.exercises.isEmpty else { return .result() }
+    guard s.active, !s.exercises.isEmpty else { return .result() }
     var ex = s.exercises[ei]
-    if ex.sets.count > 1 {
+    // Trim a trailing *planned* set only — never delete a logged/completed one,
+    // and keep at least one set. This is the Set− quick action's guard.
+    if ex.sets.count > 1, ex.sets.last?.done != true {
       ex.sets.removeLast()
       ex.curSet = min(ex.curSet, ex.sets.count - 1)
     }
@@ -797,6 +801,7 @@ extension WStore {
       WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
       await LiveSync.refresh()
     }
+    if #available(iOS 18.0, *) { StatusControls.reload() }
   }
 
   /// Terminal actions must redraw the home widget before awaiting ActivityKit.
@@ -806,6 +811,7 @@ extension WStore {
     save(session)
     WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
     await LiveSync.end(activityID: activityID)
+    if #available(iOS 18.0, *) { StatusControls.reload() }
   }
 }
 
@@ -891,7 +897,8 @@ enum GymmerWorkoutControlAction: String, AppEnum {
   case repUp
   case repDown
   case nextExercise
-  case skipRest
+  case addSet
+  case removeSet
 
   static var typeDisplayRepresentation = TypeDisplayRepresentation("Workout action")
   static var caseDisplayRepresentations: [Self: DisplayRepresentation] = [
@@ -901,7 +908,8 @@ enum GymmerWorkoutControlAction: String, AppEnum {
     .repUp: "Reps +1",
     .repDown: "Reps −1",
     .nextExercise: "Next Exercise",
-    .skipRest: "Skip Rest"
+    .addSet: "Add Set",
+    .removeSet: "Remove Set"
   ]
 
   var label: String {
@@ -912,7 +920,8 @@ enum GymmerWorkoutControlAction: String, AppEnum {
     case .repUp: return "REP +1"
     case .repDown: return "REP −1"
     case .nextExercise: return "Next Exercise"
-    case .skipRest: return "Skip Rest"
+    case .addSet: return "Set +"
+    case .removeSet: return "Set −"
     }
   }
 
@@ -922,7 +931,8 @@ enum GymmerWorkoutControlAction: String, AppEnum {
     case .kgUp, .repUp: return "plus.circle"
     case .kgDown, .repDown: return "minus.circle"
     case .nextExercise: return "chevron.right.circle"
-    case .skipRest: return "forward.end.circle"
+    case .addSet: return "plus.square"
+    case .removeSet: return "minus.square"
     }
   }
 }
@@ -951,9 +961,70 @@ struct GymmerWorkoutControlIntent: AppIntent, ControlConfigurationIntent {
     case .repUp: _ = try await AdjustIntent(field: "rep", delta: 1).perform()
     case .repDown: _ = try await AdjustIntent(field: "rep", delta: -1).perform()
     case .nextExercise: _ = try await NextExerciseIntent().perform()
-    case .skipRest: _ = try await SkipRestIntent().perform()
+    case .addSet: _ = try await AddSetIntent().perform()
+    case .removeSet: _ = try await RemoveSetIntent().perform()
     }
     return .result()
+  }
+}
+
+// MARK: - System control display state (Control Center)
+
+/// Kinds for the Control Center display controls; used both by the controls
+/// themselves and by the targeted reloads after each session mutation.
+enum GymmerControlKind {
+  static let kgRep = "com.gymmer.status.kgrep"
+  static let exercise = "com.gymmer.status.exercise"
+}
+
+/// Cheap snapshot of the active set for the Control Center display controls,
+/// built from session.json only (no catalog lookup) so the value provider stays
+/// fast while the device is locked.
+struct GymmerControlState {
+  var active: Bool
+  var exercise: String
+  var setPos: String
+  var kg: String
+  var reps: String
+
+  static let inactive = GymmerControlState(active: false, exercise: "", setPos: "", kg: "", reps: "")
+
+  static func from(_ s: Session) -> GymmerControlState {
+    guard s.active, let ex = s.currentExercise, !ex.sets.isEmpty else { return .inactive }
+    let si = min(max(ex.curSet, 0), ex.sets.count - 1)
+    let set = ex.sets[si]
+    return GymmerControlState(
+      active: true,
+      exercise: ex.name,
+      setPos: "Set \(si + 1)/\(ex.sets.count)",
+      kg: set.kg,
+      reps: set.reps
+    )
+  }
+
+  /// "80 kg · 10 reps"; "— kg · — reps" when the current set has no value (never
+  /// invents zeroes); "No active workout" when idle.
+  var kgRepValue: String {
+    guard active else { return "No active workout" }
+    let k = kg.trimmingCharacters(in: .whitespaces).isEmpty ? "—" : kg
+    let r = reps.trimmingCharacters(in: .whitespaces).isEmpty ? "—" : reps
+    return "\(k) kg · \(r) reps"
+  }
+
+  /// "Bench Press · Set 2/4"; "No active workout" when idle.
+  var exerciseValue: String {
+    guard active else { return "No active workout" }
+    let name = exercise.trimmingCharacters(in: .whitespaces).isEmpty ? "Workout" : exercise
+    return setPos.isEmpty ? name : "\(name) · \(setPos)"
+  }
+}
+
+/// Reloads only the Gymmer status controls (not every control) after a mutation.
+@available(iOS 18.0, *)
+enum StatusControls {
+  static func reload() {
+    ControlCenter.shared.reloadControls(ofKind: GymmerControlKind.kgRep)
+    ControlCenter.shared.reloadControls(ofKind: GymmerControlKind.exercise)
   }
 }
 
@@ -1050,6 +1121,19 @@ private struct Pill: View {
       .padding(.vertical, 7)
       .background(bg)
       .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+  }
+}
+
+// Circular −15 / +15 button for the native-timer-style rest banner.
+private struct RestStepPill: View {
+  var label: String
+  var body: some View {
+    Text(label)
+      .font(.system(size: 13, weight: .bold))
+      .foregroundColor(T.textPrimary)
+      .frame(width: 50, height: 50)
+      .background(T.surfaceHigh)
+      .clipShape(Circle())
   }
 }
 
@@ -1297,39 +1381,42 @@ private struct RestView: View {
     // Clamp so the range is always valid even if the end is (just) in the past.
     let end = max(restEndDate(s) ?? Date(), Date().addingTimeInterval(1))
     let allDone = sessionComplete(s)
+    let name = s.currentExercise?.name ?? ""
     VStack(alignment: .leading, spacing: 9) {
       Header(title: "พัก", subtitle: allDone ? "ครบทุกท่าแล้ว" : "หลังบันทึกเซ็ต")
-      // Self-ticking countdown — reliable across repeated rests (no timeline budget).
-      Text(timerInterval: Date()...end, countsDown: true)
-        .font(.system(size: 40, weight: .heavy, design: .rounded))
-        .monospacedDigit()
-        .multilineTextAlignment(.center)
-        .foregroundColor(T.accent)
-        .frame(maxWidth: .infinity, alignment: .center)
-      HStack(spacing: 6) {
+      // Native-timer-style banner: self-ticking countdown on the left (no
+      // timeline budget), circular −15 / +15 controls on the right.
+      HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 0) {
+          if !name.isEmpty {
+            Text(name)
+              .font(.system(size: 11))
+              .foregroundColor(T.textSecondary)
+              .lineLimit(1)
+          }
+          Text(timerInterval: Date()...end, countsDown: true)
+            .font(.system(size: 38, weight: .heavy, design: .rounded))
+            .monospacedDigit()
+            .foregroundColor(T.accent)
+        }
+        Spacer(minLength: 0)
         SurfaceIntentButton(isLiveActivity: isLiveActivity,
                             widgetIntent: RestAdjustIntent(-15), liveIntent: LiveMutationIntent(action: "restAdjust", delta: -15)) {
-          Pill(label: "−15", bg: T.surfaceHigh, fg: T.textPrimary)
+          RestStepPill(label: "−15")
         }
           .buttonStyle(.plain)
         SurfaceIntentButton(isLiveActivity: isLiveActivity,
                             widgetIntent: RestAdjustIntent(15), liveIntent: LiveMutationIntent(action: "restAdjust", delta: 15)) {
-          Pill(label: "+15", bg: T.surfaceHigh, fg: T.textPrimary)
+          RestStepPill(label: "+15")
         }
           .buttonStyle(.plain)
-        if allDone {
-          SurfaceIntentButton(isLiveActivity: isLiveActivity,
-                              widgetIntent: FinishSessionIntent(), liveIntent: LiveMutationIntent(action: "finish")) {
-            Pill(label: "จบ session", bg: T.accent, fg: .black)
-          }
-            .buttonStyle(.plain)
-        } else {
-          SurfaceIntentButton(isLiveActivity: isLiveActivity,
-                              widgetIntent: SkipRestIntent(), liveIntent: LiveMutationIntent(action: "skipRest")) {
-            Pill(label: "ข้าม", bg: T.accent, fg: .black)
-          }
-            .buttonStyle(.plain)
+      }
+      if allDone {
+        SurfaceIntentButton(isLiveActivity: isLiveActivity,
+                            widgetIntent: FinishSessionIntent(), liveIntent: LiveMutationIntent(action: "finish")) {
+          Pill(label: "จบ session", bg: T.accent, fg: .black)
         }
+          .buttonStyle(.plain)
       }
       Spacer(minLength: 0)
     }
@@ -1675,6 +1762,8 @@ struct GymmerBundle: WidgetBundle {
     GymmerLiveActivity()
     if #available(iOS 18.0, *) {
       GymmerWorkoutActionControl()
+      GymmerKgRepControl()
+      GymmerExerciseControl()
     }
   }
 }
@@ -1699,6 +1788,61 @@ struct GymmerWorkoutActionControl: ControlWidget {
     .displayName("Workout Action")
     .description("Choose a workout action for Control Center, the Lock Screen, or Action button.")
     .promptsForUserConfiguration()
+  }
+}
+
+// MARK: - System controls: dynamic status displays
+
+// Tapping a status display refreshes its value. It MUST stay background-only:
+// opening the app would request an unlock, defeating the locked-glance purpose.
+@available(iOS 18.0, *)
+struct RefreshStatusIntent: AppIntent {
+  static var title: LocalizedStringResource = "Refresh workout status"
+  static var description = IntentDescription("Refresh the Gymmer status shown in Control Center.")
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+  static var supportedModes: IntentModes = [.background]
+  func perform() async throws -> some IntentResult {
+    StatusControls.reload()
+    return .result()
+  }
+}
+
+@available(iOS 18.0, *)
+struct GymmerStatusProvider: ControlValueProvider {
+  let previewValue = GymmerControlState(
+    active: true, exercise: "Bench Press", setPos: "Set 2/4", kg: "80", reps: "10"
+  )
+  func currentValue() async throws -> GymmerControlState {
+    GymmerControlState.from(WStore.loadSession())
+  }
+}
+
+// The combined "80 kg · 10 reps" display. One control, one refresh action; iOS
+// may truncate the value string at smaller sizes, which is tolerated.
+@available(iOS 18.0, *)
+struct GymmerKgRepControl: ControlWidget {
+  var body: some ControlWidgetConfiguration {
+    StaticControlConfiguration(kind: GymmerControlKind.kgRep, provider: GymmerStatusProvider()) { state in
+      ControlWidgetButton(action: RefreshStatusIntent()) {
+        Label(state.kgRepValue, systemImage: "scalemass")
+      }
+    }
+    .displayName("Weight & reps")
+    .description("The current set's weight and reps.")
+  }
+}
+
+// The "Bench Press · Set 2/4" exercise + set-position display.
+@available(iOS 18.0, *)
+struct GymmerExerciseControl: ControlWidget {
+  var body: some ControlWidgetConfiguration {
+    StaticControlConfiguration(kind: GymmerControlKind.exercise, provider: GymmerStatusProvider()) { state in
+      ControlWidgetButton(action: RefreshStatusIntent()) {
+        Label(state.exerciseValue, systemImage: "figure.strengthtraining.traditional")
+      }
+    }
+    .displayName("Current exercise")
+    .description("The current exercise and set position.")
   }
 }
 

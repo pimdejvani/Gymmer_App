@@ -36,11 +36,14 @@ Pro, must use the Lock Screen presentation or the Home Screen widget.
 Remaining iOS items:
 
 - Implement the composed System Control design in
-  `docs/widget/SYSTEM_CONTROLS.md`: add a combined dynamic `KG · REP` value
-  provider/control, targeted Control Center reloads after mutations, provider
-  tests, and real-device size/locked-state verification. The rejected custom
-  4×4 dashboard is not an implementation target; use independent system
-  controls arranged by the user.
+  `docs/widget/SYSTEM_CONTROLS.md`: add a `ControlValueProvider` plus two dynamic
+  display controls (`1×4` exercise/stats and `1×3` `KG · REP`), add `Set −`/
+  `Set +` target-set-count mutations, drop `Skip Rest` from the Control action
+  set, add targeted Control Center reloads after mutations, provider/set-count
+  tests, and real-device size/locked-state verification. Rest moves to a
+  native-timer-style Live Activity banner (green countdown, `−15s`/`+15s`,
+  auto-advance). The rejected custom 4×4 dashboard is not an implementation
+  target; use independent system controls arranged by the user.
 - **Merge `ios` → `main`**, then point the SideStore source URL at
   `.../main/apps.json` (more stable than the `ios` branch).
 - Remove the temporary `App Group POC v2` launch alert in

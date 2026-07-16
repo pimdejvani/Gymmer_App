@@ -9,8 +9,11 @@
 - Live Activity: Lock Screen และ expanded Dynamic Island ใช้หน้า Add / Filter /
   Log / Rest / Manage ชุดเดียวกับ widget โดยตัดเฉพาะหน้า Start
 - Configurable System Control: เพิ่ม control ซ้ำได้แล้วเลือก KG/REP
-  +/−, Complete Set, Next Exercise หรือ Skip Rest สำหรับ Control Center,
-  ช่องปุ่ม Lock Screen และ Action button
+  +/−, Complete Set, Next Exercise, Set + หรือ Set − สำหรับ Control Center,
+  ช่องปุ่ม Lock Screen และ Action button (Skip Rest ถูกย้ายไปที่ rest timer แล้ว)
+- Dynamic display Controls: `Weight & reps` (`80 kg · 10 reps`) และ
+  `Current exercise` (`Bench Press · Set 2/4`) อ่าน `session.json` ผ่าน
+  `ControlValueProvider` และ reload เฉพาะ kind ที่กระทบหลังทุก mutation
 - HealthKit บน iOS 26+: session แบบ traditional strength เริ่ม/จบพร้อม Gymmer
 
 Runner, Widget extension และ XCTest ตั้ง deployment target เป็น iOS 26.0
@@ -120,8 +123,10 @@ Activity และ reload widget timeline
 ### 4b. Rest
 
 - complete set จะเริ่ม rest ตาม `rest` ของ exercise (default 90 วินาที)
-- `−15` / `+15` ปรับเวลาที่เหลือทีละ 15 วินาที
-- `ข้าม` ยกเลิก rest; ถ้าเป็น set สุดท้ายจะแสดง `จบ session`
+- layout แบบ native-timer banner: countdown สีเขียว accent อยู่ซ้าย, ปุ่มวงกลม
+  `−15` / `+15` อยู่ขวา (ปรับเวลาที่เหลือทีละ 15 วินาที)
+- เมื่อ countdown ถึง 0 จะ advance ไป set ถัดไปอัตโนมัติ (ไม่มีปุ่ม `ข้าม`
+  ในแถบนี้แล้ว); ถ้าเป็น set สุดท้ายจะแสดง `จบ session`
 - countdown ใช้ SwiftUI `Text(timerInterval:)` จึงไม่ต้องสร้าง timeline
   รายวินาทีที่อาจชน WidgetKit refresh budget
 - เมื่อ rest หมดจะมี local notification หนึ่งรายการชื่อ `พักครบ 💪` พร้อมเสียง
@@ -180,18 +185,28 @@ system Now Playing controls สำหรับ media playback ซึ่งเป
 
 ### System Controls (iOS 18+)
 
-รายละเอียด implementation ปัจจุบันและ design ที่วางแผนเพิ่ม dynamic KG/REP
-อยู่ใน [`SYSTEM_CONTROLS.md`](SYSTEM_CONTROLS.md). Design ดังกล่าวยังไม่
-implement และไม่เปลี่ยนสถานะของ Control ที่อธิบายด้านล่าง
+รายละเอียด design เต็ม (composed layout, ขนาด `1×4`/`1×3` และเกณฑ์ verify
+บนเครื่องจริง) อยู่ใน [`SYSTEM_CONTROLS.md`](SYSTEM_CONTROLS.md). code ด้านล่าง
+implement แล้วบน branch `ios` แต่ยัง**รอ verify ขนาด/สถานะล็อกบนเครื่อง iOS 26
+จริง** — CI compile ได้แต่พิสูจน์ Control Center size/Lock Screen policy ไม่ได้
 
-Widget bundle ประกาศ `GymmerWorkoutActionControl` รายการเดียวด้วย
-`AppIntentControlConfiguration`. ผู้ใช้เพิ่มได้หลาย instance แล้วกำหนดแต่ละ
-อันเป็น KG +2.5, KG −2.5, REP +1, REP −1, Complete Set, Next Exercise หรือ
-Skip Rest. ตัว action reuse `AppIntent` เส้นทางเดียวกับ Home Widget พร้อม
-`alwaysAllowed` และ background-only mode. ระบบแสดง control นี้ใน Control Center,
-ช่องปุ่ม Lock Screen
-หรือ Action button; พื้นที่ Lock Screen มีจำนวนช่องจำกัด จึงไม่แทนหน้าเต็มของ
-Live Activity
+Widget bundle ประกาศสาม control ผ่าน WidgetKit:
+
+- `GymmerWorkoutActionControl` (`AppIntentControlConfiguration`) — ผู้ใช้เพิ่มได้
+  หลาย instance แล้วกำหนดแต่ละอันเป็น KG +2.5, KG −2.5, REP +1, REP −1,
+  Complete Set, Next Exercise, Set + หรือ Set − (เปลี่ยนจำนวน set เป้าหมาย;
+  Set − ไม่ลบ set ที่ done แล้วและคง set ไว้อย่างน้อย 1)
+- `GymmerKgRepControl` และ `GymmerExerciseControl` — display control ที่ใช้
+  `ControlValueProvider` (`GymmerStatusProvider`) อ่าน `GymmerControlState` จาก
+  `session.json`; ปุ่มใช้ `RefreshStatusIntent` แบบ background-only (ไม่เปิดแอป
+  เพราะจะขอ unlock). สถานะ inactive แสดง `No active workout`, ค่าที่ขาดแสดง
+  `— kg · — reps`
+
+ทุก action reuse `AppIntent` เส้นทางเดียวกับ Home Widget พร้อม `alwaysAllowed`
+และ background-only mode. หลังทุก mutation สำเร็จ `saveAndSync`/`saveAndEnd` จะ
+`ControlCenter.shared.reloadControls(ofKind:)` เฉพาะ kind ของ display control.
+ระบบแสดง control ใน Control Center, ช่องปุ่ม Lock Screen หรือ Action button;
+พื้นที่ Lock Screen มีจำนวนช่องจำกัด จึงไม่แทนหน้าเต็มของ Live Activity
 
 ค่า KG/REP ใน Live Activity อ่านจาก `ActivityViewContext.state` โดยตรงและทำ
 เครื่องหมาย `invalidatableContent` เฉพาะ surface นี้ จึงใช้สถานะเบลอมาตรฐาน

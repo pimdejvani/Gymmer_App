@@ -179,6 +179,7 @@ GymmerHome (or page state), which persists via the store then reloads.
 - **Muscle map drawing** → `widgets/body_muscle_painter.dart`.
 - **Anatomy rendering wrong/missing** → `docs/ANATOMY_STILLS.md` + `widgets/exercise_anatomy_panel.dart` + `tools/render_muscle_layers.js`.
 - **iOS widget / Live Activity** → `docs/widget/WIDGET.md` + `lib/data/widget_bridge.dart` + `ios/GymmerWidget/GymmerWidget.swift` + `ios/Runner/AppDelegate.swift`.
+- **iOS System Control design / backlog** → `docs/widget/SYSTEM_CONTROLS.md` + `ios/GymmerWidget/GymmerWidget.swift` + `ios/RunnerTests/RunnerTests.swift`.
 - **Product behavior question** → `CONTEXT.md`, then `docs/FUNCTIONS.md`.
 - **What to do next** → `next_step.md`.
 
@@ -198,6 +199,7 @@ GymmerHome (or page state), which persists via the store then reloads.
 - `docs/DECISIONS.md` — merged architecture decisions (was docs/adr/)
 - `docs/ANATOMY_STILLS.md` — stills pipeline + asset licensing (IMPORTANT before commercial release)
 - `docs/widget/WIDGET.md` — iOS widget + Live Activity state contract and current behavior
+- `docs/widget/SYSTEM_CONTROLS.md` — current System Control behavior, feasible composed layout, dynamic KG/REP plan, constraints, and verification criteria
 - `backup/` — archived files (gitignored): old docs, source glbs, superseded parent next_step/update
 
 Old Swift project at repo root (`GYMMER/`, `GYMMER.xcodeproj`) is legacy — never read it.

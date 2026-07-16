@@ -35,6 +35,12 @@ Pro, must use the Lock Screen presentation or the Home Screen widget.
 
 Remaining iOS items:
 
+- Implement the composed System Control design in
+  `docs/widget/SYSTEM_CONTROLS.md`: add a combined dynamic `KG · REP` value
+  provider/control, targeted Control Center reloads after mutations, provider
+  tests, and real-device size/locked-state verification. The rejected custom
+  4×4 dashboard is not an implementation target; use independent system
+  controls arranged by the user.
 - **Merge `ios` → `main`**, then point the SideStore source URL at
   `.../main/apps.json` (more stable than the `ios` branch).
 - Remove the temporary `App Group POC v2` launch alert in

@@ -3,6 +3,15 @@
 Short log, newest first. Full historic detail is archived in `backup/`
 (gitignored) if ever needed.
 
+## 2026-07-16 — System Control dashboard design recorded
+
+- Documented the feasible composed-Control layout and rejected the exploratory
+  custom 4×4 dashboard as outside the public ControlWidget template.
+- Selected one combined dynamic `KG · REP` value control plus independent
+  mutation controls, with exact provider/reload changes and automated/device
+  verification criteria. This is a design specification, not an implemented
+  feature.
+
 ## 2026-07-16 — Faster Live Activity feedback and explicit lock behavior
 
 - KG/REP values on the Live Activity now use ActivityKit content state and

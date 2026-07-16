@@ -180,6 +180,10 @@ system Now Playing controls สำหรับ media playback ซึ่งเป
 
 ### System Controls (iOS 18+)
 
+รายละเอียด implementation ปัจจุบันและ design ที่วางแผนเพิ่ม dynamic KG/REP
+อยู่ใน [`SYSTEM_CONTROLS.md`](SYSTEM_CONTROLS.md). Design ดังกล่าวยังไม่
+implement และไม่เปลี่ยนสถานะของ Control ที่อธิบายด้านล่าง
+
 Widget bundle ประกาศ `GymmerWorkoutActionControl` รายการเดียวด้วย
 `AppIntentControlConfiguration`. ผู้ใช้เพิ่มได้หลาย instance แล้วกำหนดแต่ละ
 อันเป็น KG +2.5, KG −2.5, REP +1, REP −1, Complete Set, Next Exercise หรือ

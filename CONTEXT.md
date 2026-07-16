@@ -82,7 +82,9 @@ iteration). Desktop is out of scope.
   one configurable system Control can be added multiple times and assigned to
   KG/REP +/−, Complete Set, Next Exercise, or Skip Rest in Control Center, the
   Lock Screen control slots, and Action button. No voice/shortcut integration
-  is published.
+  is published. A composed Control Center design with a combined dynamic
+  `KG · REP` value is specified but not implemented; see
+  `docs/widget/SYSTEM_CONTROLS.md`.
 - On iOS 26+, starting a Gymmer session also starts an indoor traditional-
   strength `HKWorkoutSession`; Finish saves it to HealthKit and Discard drops
   it. The lifecycle is availability-gated and the app remains functional when

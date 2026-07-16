@@ -141,6 +141,28 @@ final class RunnerTests: XCTestCase {
     XCTAssertTrue(state.active)
     XCTAssertEqual(state.kgRepValue, "10 kg · 8 reps")
     XCTAssertEqual(state.exerciseValue, "Exercise 1 · Set 1/3")
+    // seedSession uses the "Chest" muscle → strength-training figure.
+    XCTAssertEqual(state.exerciseSymbol, "figure.strengthtraining.traditional")
+  }
+
+  func testExerciseSymbolMapsMuscleRegionToDistinctGlyphs() {
+    func symbol(for muscle: String) -> String {
+      var session = Session()
+      session.active = true
+      var exercise = WExercise(name: "X", muscle: muscle, equipment: "Barbell")
+      exercise.sets = [WSet(kg: "10", reps: "8")]
+      session.exercises = [exercise]
+      return GymmerControlState.from(session).exerciseSymbol
+    }
+
+    XCTAssertEqual(symbol(for: "Biceps"), "dumbbell.fill")
+    XCTAssertEqual(symbol(for: "Lats"), "figure.strengthtraining.functional")
+    XCTAssertEqual(symbol(for: "Abs"), "figure.core.training")
+    XCTAssertEqual(symbol(for: "Quads"), "figure.run")
+    XCTAssertEqual(symbol(for: "Side Delt"), "figure.arms.open")
+    // Unmapped / idle falls back to the default figure.
+    XCTAssertEqual(symbol(for: "Neck"), "figure.strengthtraining.traditional")
+    XCTAssertEqual(GymmerControlState.inactive.exerciseSymbol, "figure.strengthtraining.traditional")
   }
 
   func testControlStateInactiveShowsNoWorkout() {

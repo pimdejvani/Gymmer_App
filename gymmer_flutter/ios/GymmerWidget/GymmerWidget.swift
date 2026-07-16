@@ -790,6 +790,11 @@ extension WStore {
   @available(iOS 17.0, *)
   static func saveAndSync(_ session: Session, activityID: String? = nil) async {
     save(session)
+    // Submit the Control Center reload hint the instant the file is written,
+    // before awaiting ActivityKit. iOS still schedules the actual refresh on its
+    // own budget, but enqueuing early avoids stacking the ~ActivityKit round-trip
+    // in front of the hint.
+    if #available(iOS 18.0, *) { StatusControls.reload() }
     let target = activityID ?? LiveSync.targetActivityID
     if let target, !target.isEmpty {
       // A Live Activity interaction is already waiting for this exact update.
@@ -801,7 +806,6 @@ extension WStore {
       WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
       await LiveSync.refresh()
     }
-    if #available(iOS 18.0, *) { StatusControls.reload() }
   }
 
   /// Terminal actions must redraw the home widget before awaiting ActivityKit.
@@ -809,9 +813,9 @@ extension WStore {
   @available(iOS 17.0, *)
   static func saveAndEnd(_ session: Session, activityID: String? = nil) async {
     save(session)
+    if #available(iOS 18.0, *) { StatusControls.reload() }
     WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
     await LiveSync.end(activityID: activityID)
-    if #available(iOS 18.0, *) { StatusControls.reload() }
   }
 }
 
@@ -928,8 +932,12 @@ enum GymmerWorkoutControlAction: String, AppEnum {
   var systemImage: String {
     switch self {
     case .completeSet: return "checkmark.circle.fill"
-    case .kgUp, .repUp: return "plus.circle"
-    case .kgDown, .repDown: return "minus.circle"
+    // KG uses the weight family, REP uses a distinct arrow family, so the two
+    // adjacent controls never render the same glyph even when text truncates.
+    case .kgUp: return "plus.circle"
+    case .kgDown: return "minus.circle"
+    case .repUp: return "arrow.up.circle"
+    case .repDown: return "arrow.down.circle"
     case .nextExercise: return "chevron.right.circle"
     case .addSet: return "plus.square"
     case .removeSet: return "minus.square"
@@ -986,6 +994,7 @@ struct GymmerControlState {
   var setPos: String
   var kg: String
   var reps: String
+  var muscle: String = ""
 
   static let inactive = GymmerControlState(active: false, exercise: "", setPos: "", kg: "", reps: "")
 
@@ -998,8 +1007,33 @@ struct GymmerControlState {
       exercise: ex.name,
       setPos: "Set \(si + 1)/\(ex.sets.count)",
       kg: set.kg,
-      reps: set.reps
+      reps: set.reps,
+      muscle: ex.muscle
     )
+  }
+
+  /// SF Symbol for the exercise display, chosen by the primary muscle region.
+  /// Control Center renders control glyphs as templated (monochrome) SF Symbols,
+  /// so the app's full-colour anatomy image can't appear here — the muscle group
+  /// picks the closest system symbol instead. Falls back to the strength-training
+  /// figure for idle state or an unmapped muscle.
+  var exerciseSymbol: String {
+    switch muscle {
+    case "Chest":
+      return "figure.strengthtraining.traditional"
+    case "Front Delt", "Side Delt", "Rear Delt":
+      return "figure.arms.open"
+    case "Biceps", "Triceps", "Forearms":
+      return "dumbbell.fill"
+    case "Traps", "Rhomboids", "Lats":
+      return "figure.strengthtraining.functional"
+    case "Abs":
+      return "figure.core.training"
+    case "Quads", "Hamstrings", "Glutes", "Calves":
+      return "figure.run"
+    default:
+      return "figure.strengthtraining.traditional"
+    }
   }
 
   /// "80 kg · 10 reps"; "— kg · — reps" when the current set has no value (never
@@ -1810,7 +1844,7 @@ struct RefreshStatusIntent: AppIntent {
 @available(iOS 18.0, *)
 struct GymmerStatusProvider: ControlValueProvider {
   let previewValue = GymmerControlState(
-    active: true, exercise: "Bench Press", setPos: "Set 2/4", kg: "80", reps: "10"
+    active: true, exercise: "Bench Press", setPos: "Set 2/4", kg: "80", reps: "10", muscle: "Chest"
   )
   func currentValue() async throws -> GymmerControlState {
     GymmerControlState.from(WStore.loadSession())
@@ -1838,7 +1872,7 @@ struct GymmerExerciseControl: ControlWidget {
   var body: some ControlWidgetConfiguration {
     StaticControlConfiguration(kind: GymmerControlKind.exercise, provider: GymmerStatusProvider()) { state in
       ControlWidgetButton(action: RefreshStatusIntent()) {
-        Label(state.exerciseValue, systemImage: "figure.strengthtraining.traditional")
+        Label(state.exerciseValue, systemImage: state.exerciseSymbol)
       }
     }
     .displayName("Current exercise")

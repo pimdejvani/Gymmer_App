@@ -83,8 +83,22 @@ rectangle is an independent system Control with visible system spacing. The two
 display controls are:
 
 1. `1×4` exercise/stats display — exercise name, icon, a compact stats summary
-   (target scheme and working weight), and set position `Set n/m`.
+   (target scheme and working weight), and set position `Set n/m`. Its icon is an
+   SF Symbol chosen by the current exercise's primary muscle region (chest → the
+   strength-training figure, arms → `dumbbell.fill`, back → the functional
+   figure, abs → `figure.core.training`, legs → `figure.run`, shoulders →
+   `figure.arms.open`, else the default figure). The app's full-colour anatomy
+   image cannot appear here: Control Center renders a control glyph as a
+   templated (monochrome) SF Symbol, and the anatomy assets live in the Flutter
+   bundle, not the App Group the extension can read. The per-muscle symbol is the
+   accepted substitute.
 2. `1×3` current-set display — the combined `KG · REP` value string.
+
+The mutation controls use distinct glyph families so two adjacent buttons never
+render the same icon even when their text truncates: `KG ±` use
+`plus.circle`/`minus.circle`, `REP ±` use `arrow.up.circle`/`arrow.down.circle`,
+`Set ±` use `plus.square`/`minus.square`, Complete Set uses
+`checkmark.circle.fill`, and Next uses `chevron.right.circle`.
 
 If iOS does not offer the wide size for a display control on the test device,
 fall back to standard controls (e.g. split the stats display into
@@ -151,6 +165,13 @@ Required implementation work:
 6. Request `ControlCenter` reload for the affected display-control kinds after
    every successful session mutation, navigation action, start, finish, and
    discard. Reload only the affected control kinds rather than all controls.
+   Submit the reload hint immediately after the `session.json` write, before
+   awaiting ActivityKit, so the ActivityKit round-trip does not sit in front of
+   the hint. Note this only reorders *our* work: iOS still coalesces and
+   rate-limits third-party control reloads on its own budget, so the display
+   controls remain a best-effort glance surface, not a real-time readout. The
+   Live Activity (`Activity.update` + self-updating `Text`) is the low-latency
+   locked-glance surface; the Control Center displays will always lag it.
 7. Style the Live Activity Rest phase as the native-timer banner: green-accent
    countdown left, `−15s`/`+15s` circular buttons right, auto-advance at `0:00`.
 8. Keep the current mutation dispatcher and remaining action controls intact. Do

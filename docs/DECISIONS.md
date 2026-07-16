@@ -108,8 +108,8 @@ ordinary mutation intents as the home widget. This does not replace the richer
 Live Activity. The source retains availability annotations, while the shipped
 build now requires iOS 26 per decision 17.
 
-On iOS 26 the configurable Control explicitly supports background execution
-and restricts execution to the WidgetKit extension. It is the supported path
+On iOS 26 the configurable Control explicitly supports background execution.
+It is the supported path
 for locked-device workout actions; the full Live Activity cannot bypass the
 system's unlock requirement.
 

@@ -933,7 +933,6 @@ struct GymmerWorkoutControlIntent: AppIntent, ControlConfigurationIntent {
   static var description = IntentDescription("Control the active Gymmer session.")
   static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
   static var supportedModes: IntentModes = [.background]
-  static var allowedExecutionTargets: IntentExecutionTargets { [.widgetKitExtension] }
 
   @Parameter(title: "Action") var action: GymmerWorkoutControlAction?
 

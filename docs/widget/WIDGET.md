@@ -184,8 +184,8 @@ Widget bundle ประกาศ `GymmerWorkoutActionControl` รายการ
 `AppIntentControlConfiguration`. ผู้ใช้เพิ่มได้หลาย instance แล้วกำหนดแต่ละ
 อันเป็น KG +2.5, KG −2.5, REP +1, REP −1, Complete Set, Next Exercise หรือ
 Skip Rest. ตัว action reuse `AppIntent` เส้นทางเดียวกับ Home Widget พร้อม
-`alwaysAllowed`, background-only mode และบังคับ execution target ไปที่
-WidgetKit extension. ระบบแสดง control นี้ใน Control Center, ช่องปุ่ม Lock Screen
+`alwaysAllowed` และ background-only mode. ระบบแสดง control นี้ใน Control Center,
+ช่องปุ่ม Lock Screen
 หรือ Action button; พื้นที่ Lock Screen มีจำนวนช่องจำกัด จึงไม่แทนหน้าเต็มของ
 Live Activity
 

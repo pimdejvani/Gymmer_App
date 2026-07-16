@@ -9,8 +9,8 @@ Short log, newest first. Full historic detail is archived in `backup/`
   `invalidatableContent`, producing the system blur while an update is pending.
 - Live Activity mutations update the tapped Activity before requesting a Home
   Widget reload; Home Widget mutations retain their existing reload-first path.
-- The configurable system Control is background-only and runs in the WidgetKit
-  extension. It remains the supported locked-device path because iOS disables
+- The configurable system Control is background-only. It remains the supported
+  locked-device path because iOS disables
   ordinary Widget and Live Activity buttons until the device is unlocked.
 
 ## 2026-07-16 — Minimum deployment target raised to iOS 26

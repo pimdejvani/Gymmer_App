@@ -56,8 +56,8 @@ is locked; `alwaysAllowed` can't override that surface rule. Media apps such as
 YouTube use the separate Now Playing system. Gymmer therefore
 provides one configurable system Control that can be added multiple
 times for KG/REP +/−, Complete Set, Next Exercise, or Skip Rest in Control
-Center, Lock Screen control slots, and the Action button. The Control runs in
-the Widget extension as a background `alwaysAllowed` intent. Each Live Activity
+Center, Lock Screen control slots, and the Action button. The Control runs as a
+background `alwaysAllowed` intent. Each Live Activity
 intent also targets its exact Activity ID. On iOS 26+, Gymmer starts a native
 HealthKit strength-workout session with the app session, saves it on Finish,
 and discards it on Discard. This does not add voice shortcuts.

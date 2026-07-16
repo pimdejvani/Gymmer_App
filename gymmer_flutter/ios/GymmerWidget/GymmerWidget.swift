@@ -873,6 +873,7 @@ struct LiveMutationIntent: LiveActivityIntent {
   }
 }
 
+@available(iOS 17.0, *)
 extension LiveMutationIntent: TargetedLiveActivityIntent {}
 
 #if GYMMER_WIDGET_EXTENSION

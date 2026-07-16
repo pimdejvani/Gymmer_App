@@ -124,6 +124,17 @@ final class RunnerTests: XCTestCase {
     XCTAssertEqual(WStore.loadSession().exercises[0].sets.count, 1)
   }
 
+  func testLiveMutationDispatchesSetCountActions() async throws {
+    seedSession(setCount: 2)
+
+    // The Live Activity header Set ± buttons route through LiveMutationIntent.
+    _ = try await LiveMutationIntent(action: "addSet").perform()
+    XCTAssertEqual(WStore.loadSession().exercises[0].sets.count, 3)
+
+    _ = try await LiveMutationIntent(action: "removeSet").perform()
+    XCTAssertEqual(WStore.loadSession().exercises[0].sets.count, 2)
+  }
+
   @available(iOS 18.0, *)
   func testControlActionsDispatchSetCountMutations() async throws {
     seedSession(setCount: 2)

@@ -1303,6 +1303,14 @@ private struct LogView: View {
         Text("ท่า \(ei + 1)/\(s.exercises.count) · \(counter)")
           .font(.system(size: 10)).foregroundColor(T.textSecondary).lineLimit(1)
         Spacer(minLength: 0)
+        // Set −/+ live only on the Live Activity header so the target set count
+        // is adjustable from the Lock Screen without adding a taller control row.
+        if isLiveActivity {
+          headerIconButton("minus.square",
+                           widget: RemoveSetIntent(), live: LiveMutationIntent(action: "removeSet"))
+          headerIconButton("plus.square",
+                           widget: AddSetIntent(), live: LiveMutationIntent(action: "addSet"))
+        }
         // Manage moved up to the header to free the control row.
         SurfaceIntentButton(isLiveActivity: isLiveActivity,
                             widgetIntent: WidgetNavIntent("manage"), liveIntent: NavIntent("manage")) {
@@ -1366,6 +1374,20 @@ private struct LogView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
+  }
+
+  // Compact header icon button (used for the Live Activity Set ±). Mirrors the
+  // Manage button's footprint so adding it never grows the header row height.
+  private func headerIconButton(
+    _ icon: String, widget: some AppIntent, live: LiveMutationIntent
+  ) -> some View {
+    SurfaceIntentButton(isLiveActivity: isLiveActivity, widgetIntent: widget, liveIntent: live) {
+      Image(systemName: icon)
+        .font(.system(size: 13, weight: .bold)).foregroundColor(T.textPrimary)
+        .frame(width: 30, height: 26)
+        .background(T.surfaceHigh)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }.buttonStyle(.plain)
   }
 
   // Horizontal stepper: [ − ] [ label / value ] [ + ], filling its row height.

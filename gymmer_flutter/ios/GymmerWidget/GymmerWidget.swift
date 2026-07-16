@@ -300,6 +300,8 @@ enum Num {
 @available(iOS 17.0, *)
 struct WidgetNavIntent: AppIntent {
   static var title: LocalizedStringResource = "Navigate widget"
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+  static var supportedModes: IntentModes = [.background]
   @Parameter(title: "page") var page: String
   init() {}
   init(_ page: String) { self.page = page }
@@ -480,6 +482,7 @@ struct SelectFilterIntent: AppIntent {
 struct AdjustIntent: AppIntent {
   static var title: LocalizedStringResource = "Adjust value"
   static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+  static var supportedModes: IntentModes = [.background]
   @Parameter(title: "field") var field: String // "kg" | "rep"
   @Parameter(title: "delta") var delta: Double
   init() {}
@@ -507,6 +510,7 @@ struct AdjustIntent: AppIntent {
 struct CompleteSetIntent: AppIntent {
   static var title: LocalizedStringResource = "Complete set"
   static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+  static var supportedModes: IntentModes = [.background]
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     guard s.active, !s.exercises.isEmpty else { return .result() }
@@ -539,6 +543,7 @@ struct CompleteSetIntent: AppIntent {
 struct NextExerciseIntent: AppIntent {
   static var title: LocalizedStringResource = "Next exercise"
   static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+  static var supportedModes: IntentModes = [.background]
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     guard s.active, !s.exercises.isEmpty else { return .result() }
@@ -553,6 +558,8 @@ struct NextExerciseIntent: AppIntent {
 @available(iOS 17.0, *)
 struct RestAdjustIntent: AppIntent {
   static var title: LocalizedStringResource = "Adjust rest"
+  static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+  static var supportedModes: IntentModes = [.background]
   @Parameter(title: "delta") var delta: Int
   init() {}
   init(_ delta: Int) { self.delta = delta }
@@ -571,6 +578,7 @@ struct RestAdjustIntent: AppIntent {
 struct SkipRestIntent: AppIntent {
   static var title: LocalizedStringResource = "Skip rest"
   static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+  static var supportedModes: IntentModes = [.background]
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     guard s.active else { return .result() }
@@ -587,6 +595,7 @@ struct SkipRestIntent: AppIntent {
 struct AddSetIntent: AppIntent {
   static var title: LocalizedStringResource = "Add set"
   static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+  static var supportedModes: IntentModes = [.background]
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     let ei = s.safeExIndex
@@ -604,6 +613,7 @@ struct AddSetIntent: AppIntent {
 struct RemoveSetIntent: AppIntent {
   static var title: LocalizedStringResource = "Remove set"
   static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+  static var supportedModes: IntentModes = [.background]
   func perform() async throws -> some IntentResult {
     var s = WStore.loadSession()
     let ei = s.safeExIndex
@@ -1096,11 +1106,14 @@ private struct SurfaceIntentButton<WidgetIntent: AppIntent, LiveIntent: Targeted
   }
 
   @ViewBuilder var body: some View {
-    if isLiveActivity {
-      Button(intent: liveIntent.targeting(activityID: activityID)) { label }
-    } else {
-      Button(intent: widgetIntent) { label }
-    }
+    // EXPERIMENT (SideStore free-signing): run the *extension* AppIntent even on
+    // the Live Activity. A LiveActivityIntent runs in the app process, which
+    // SideStore gates behind Face ID on the Lock Screen; the extension intent —
+    // the same kind the Control Center control uses, which taps while locked —
+    // does not. liveIntent/activityID stay wired so this is a one-line revert if
+    // it regresses. Loses per-Activity ID targeting, but saveAndSync refreshes
+    // every running Activity anyway, and there is only ever one.
+    Button(intent: widgetIntent) { label }
   }
 }
 

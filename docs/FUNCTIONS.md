@@ -130,14 +130,17 @@ widget controls use ordinary extension-side `AppIntent`s. Activity controls use
 Runner-side `LiveActivityIntent` wrappers that call the same mutation code,
 persist the change, update ActivityKit, then reload the home widget. The wrappers
 request `alwaysAllowed` and carry the exact `ActivityViewContext.activityID`, so
-an update or terminal action affects only the Activity that was tapped. iOS may
-still require Lock Screen authentication for the Live Activity surface.
+an update or terminal action affects only the Activity that was tapped. iOS
+keeps Widget and Live Activity buttons inactive until the device is unlocked;
+the intent authentication policy cannot override that surface rule.
 
 Gymmer publishes one configurable system Control. People
 can add multiple copies to Control Center, the two Lock Screen control slots,
 or the Action button, then select KG +2.5, KG −2.5, REP +1, REP −1, Complete
 Set, Next Exercise, or Skip Rest for each copy. It uses the stable extension-
-side mutation path with `alwaysAllowed` and does not require media playback.
+side mutation path with background-only `alwaysAllowed` execution and does not
+require media playback. This system Control, not the Live Activity button, is
+the supported locked-device action path.
 
 All high-frequency intents return without mutation when no workout is active,
 so stale system controls cannot create ghost state. Gymmer does not publish a

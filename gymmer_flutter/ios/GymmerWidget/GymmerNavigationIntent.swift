@@ -7,6 +7,7 @@ import AppIntents
 struct NavIntent: LiveActivityIntent, TargetedLiveActivityIntent {
   static var title: LocalizedStringResource = "Navigate"
   static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+  static var supportedModes: IntentModes = [.background]
 
   @Parameter(title: "page") var page: String
   @Parameter(title: "activityID") var activityID: String

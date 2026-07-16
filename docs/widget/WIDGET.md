@@ -173,9 +173,9 @@ Lock Screen. iPhone ที่ไม่มี Dynamic Island ไม่มี Live
 ตอนปลดล็อก จึงต้องใช้ Home Screen widget หากต้องการกดได้ตลอดโดยไม่ล็อกจอ
 
 Activity intents ตั้ง `authenticationPolicy = .alwaysAllowed` แต่เอกสารของ
-Apple ระบุว่าปุ่ม/สวิตช์ของ Live Activity บนเครื่องที่ล็อกอาจยัง inactive จน
-authenticate; แอป override policy นี้ไม่ได้. ปุ่มของ YouTube เป็น system Now
-Playing controls สำหรับ media playback ซึ่งเป็นคนละ API. เส้นทาง workout ที่
+Apple ระบุว่าปุ่ม/สวิตช์ของ Widget และ Live Activity จะ inactive ขณะเครื่อง
+ล็อกจนกว่าจะปลดล็อก; แอป override policy นี้ไม่ได้. ปุ่มของ YouTube เป็น
+system Now Playing controls สำหรับ media playback ซึ่งเป็นคนละ API. เส้นทาง workout ที่
 ระบบรองรับโดยตรงจึงใช้ System Controls ด้านล่างร่วมกับ HealthKit session
 
 ### System Controls (iOS 18+)
@@ -184,9 +184,16 @@ Widget bundle ประกาศ `GymmerWorkoutActionControl` รายการ
 `AppIntentControlConfiguration`. ผู้ใช้เพิ่มได้หลาย instance แล้วกำหนดแต่ละ
 อันเป็น KG +2.5, KG −2.5, REP +1, REP −1, Complete Set, Next Exercise หรือ
 Skip Rest. ตัว action reuse `AppIntent` เส้นทางเดียวกับ Home Widget พร้อม
-`alwaysAllowed`. ระบบแสดง control นี้ใน Control Center, ช่องปุ่ม Lock Screen
+`alwaysAllowed`, background-only mode และบังคับ execution target ไปที่
+WidgetKit extension. ระบบแสดง control นี้ใน Control Center, ช่องปุ่ม Lock Screen
 หรือ Action button; พื้นที่ Lock Screen มีจำนวนช่องจำกัด จึงไม่แทนหน้าเต็มของ
 Live Activity
+
+ค่า KG/REP ใน Live Activity อ่านจาก `ActivityViewContext.state` โดยตรงและทำ
+เครื่องหมาย `invalidatableContent` เฉพาะ surface นี้ จึงใช้สถานะเบลอมาตรฐาน
+ระหว่างรอผลปุ่มโดยไม่เปลี่ยน feedback ของ Home Widget. การ mutation จาก Live
+Activity อัปเดต Activity ID ที่กดก่อนขอ reload Home Widget; เส้นทาง Home Widget
+ยังคง reload-first เหมือนเดิม
 
 ### HealthKit workout session (iOS 26+)
 
@@ -195,9 +202,8 @@ Live Activity
 `HKLiveWorkoutBuilder`. Finish ใช้ `stopActivity`, จบ collection และบันทึก
 workout ลง HealthKit; Discard เรียก `discardWorkout` โดยไม่สร้าง record.
 `SceneDelegate` รองรับ active-workout recovery และต่อ delegate กลับเมื่อ iOS
-เปิด process ใหม่. โค้ด availability-gated ทำให้ iOS รุ่นเก่าหรือเครื่องที่
-ปฏิเสธสิทธิ์ยังใช้ Gymmer/widget/Live Activity ได้ตามเดิม และไม่มี voice intent
-extension หรือ shortcut provider
+เปิด process ใหม่. หากเครื่องปฏิเสธสิทธิ์ HealthKit ยังใช้ Gymmer/widget/Live
+Activity ได้ตามเดิม และไม่มี voice intent extension หรือ shortcut provider
 
 ## ไฟล์ implementation
 

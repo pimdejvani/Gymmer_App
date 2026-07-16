@@ -786,8 +786,17 @@ extension WStore {
   @available(iOS 17.0, *)
   static func saveAndSync(_ session: Session, activityID: String? = nil) async {
     save(session)
-    WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
-    await LiveSync.refresh(activityID: activityID)
+    let target = activityID ?? LiveSync.targetActivityID
+    if let target, !target.isEmpty {
+      // A Live Activity interaction is already waiting for this exact update.
+      // Prioritize it; home-widget interactions keep their original reload-first
+      // path so their proven response behavior doesn't regress.
+      await LiveSync.refresh(activityID: target)
+      WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
+    } else {
+      WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
+      await LiveSync.refresh()
+    }
   }
 
   /// Terminal actions must redraw the home widget before awaiting ActivityKit.
@@ -813,6 +822,7 @@ protocol TargetedLiveActivityIntent: AppIntent {
 struct LiveMutationIntent: LiveActivityIntent {
   static var title: LocalizedStringResource = "Update workout"
   static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+  static var supportedModes: IntentModes = [.background]
 
   @Parameter(title: "action") var action: String
   @Parameter(title: "value") var value: String
@@ -922,6 +932,8 @@ struct GymmerWorkoutControlIntent: AppIntent, ControlConfigurationIntent {
   static var title: LocalizedStringResource = "Workout Control"
   static var description = IntentDescription("Control the active Gymmer session.")
   static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
+  static var supportedModes: IntentModes = [.background]
+  static var allowedExecutionTargets: IntentExecutionTargets { [.widgetKitExtension] }
 
   @Parameter(title: "Action") var action: GymmerWorkoutControlAction?
 
@@ -1256,6 +1268,7 @@ private struct LogView: View {
         Text(label).font(.system(size: 9, weight: .semibold)).foregroundColor(T.textTertiary)
         Text(value).font(.system(size: 20, weight: .heavy, design: .rounded))
           .foregroundColor(T.textPrimary).lineLimit(1).minimumScaleFactor(0.6)
+          .invalidatableContent(isLiveActivity)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       SurfaceIntentButton(isLiveActivity: isLiveActivity, widgetIntent: up, liveIntent: liveUp) {
@@ -1728,6 +1741,20 @@ private struct LiveActivityEntryView: View {
     session.active = true
     session.sessionName = session.sessionName ?? title
     session.ui.page = state.page ?? "log"
+    // Drive the fast-changing log values from ActivityKit's content state.
+    // This gives the system a direct state diff for its built-in blurred text
+    // transition instead of relying only on a second App Group file read.
+    if !session.exercises.isEmpty {
+      let exerciseIndex = min(max(state.exIndex - 1, 0), session.exercises.count - 1)
+      session.curEx = exerciseIndex
+      var exercise = session.exercises[exerciseIndex]
+      if !exercise.sets.isEmpty {
+        let setIndex = min(max(exercise.curSet, 0), exercise.sets.count - 1)
+        exercise.sets[setIndex].kg = state.kg
+        exercise.sets[setIndex].reps = state.reps
+        session.exercises[exerciseIndex] = exercise
+      }
+    }
     return GymmerEntry(
       date: Date(),
       session: session,

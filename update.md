@@ -3,6 +3,16 @@
 Short log, newest first. Full historic detail is archived in `backup/`
 (gitignored) if ever needed.
 
+## 2026-07-16 — Faster Live Activity feedback and explicit lock behavior
+
+- KG/REP values on the Live Activity now use ActivityKit content state and
+  `invalidatableContent`, producing the system blur while an update is pending.
+- Live Activity mutations update the tapped Activity before requesting a Home
+  Widget reload; Home Widget mutations retain their existing reload-first path.
+- The configurable system Control is background-only and runs in the WidgetKit
+  extension. It remains the supported locked-device path because iOS disables
+  ordinary Widget and Live Activity buttons until the device is unlocked.
+
 ## 2026-07-16 — Minimum deployment target raised to iOS 26
 
 - Runner, GymmerWidget, and RunnerTests now all require iOS 26.0. CI continues
@@ -90,8 +100,9 @@ Implemented on branch `ios` across the widget commits from `cdea8c8` through
   the widget is back on its original extension-side `AppIntent` path, while the
   Live Activity uses Runner-side wrappers that dispatch to the same mutations.
   Removed numeric invalidation/transition feedback that caused KG/REP controls
-  to blink. Activity intents request `alwaysAllowed` as a best effort, but iOS
-  still owns Lock Screen authentication; Now Playing is a separate media API.
+  to blink. The current Live Activity-only pending blur is described above.
+  Activity intents request `alwaysAllowed`, but iOS keeps this surface inactive
+  while locked; Now Playing is a separate media API.
 
 ## 2026-07-14 — iOS photo permission recorded
 

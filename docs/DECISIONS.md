@@ -92,9 +92,9 @@ extension execution path and response behavior of the home widget.
 The companion target initially used iOS 17 and supports the medium home widget plus Lock
 Screen/Dynamic Island presentations. The Lock Screen and expanded Dynamic
 Island deliberately reuse the home widget's Add/Filter/Log/Rest/Manage surface
-and omit only Start. Activity intents request the `alwaysAllowed` authentication
-policy as a best effort, but iOS owns Lock Screen authorization and may still
-require authentication. Now Playing controls are a separate media-only system.
+and omit only Start. Although Activity intents request the `alwaysAllowed`
+authentication policy, iOS keeps Widget and Live Activity buttons inactive
+until unlock. Now Playing controls are a separate media-only system.
 A device without Dynamic Island has no persistent unlocked Live Activity
 surface, so the Home Screen widget is the unlocked alternative.
 
@@ -107,6 +107,11 @@ Next Exercise, or Skip Rest. Its `alwaysAllowed` action dispatches to the same
 ordinary mutation intents as the home widget. This does not replace the richer
 Live Activity. The source retains availability annotations, while the shipped
 build now requires iOS 26 per decision 17.
+
+On iOS 26 the configurable Control explicitly supports background execution
+and restricts execution to the WidgetKit extension. It is the supported path
+for locked-device workout actions; the full Live Activity cannot bypass the
+system's unlock requirement.
 
 Finish and Discard persist and request the home-widget redraw before awaiting
 ActivityKit dismissal. App startup must reconcile a newer widget-authored

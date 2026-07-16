@@ -43,7 +43,8 @@ Remaining iOS items:
   widget because SideStore can rewrite the group identifier.
 - Test the iOS 26 widget, Live Activity, and configurable Controls on a real
   device after SideStore re-sign. Verify all seven Control
-  actions while locked, exact-Activity navigation, set/rest mutations,
+  actions from the system Control while locked, exact-Activity navigation after
+  unlock, set/rest mutations,
   widget-to-app reconciliation, finish/discard, and notifications.
 - On an iOS 26 device, verify that SideStore grants the HealthKit entitlement,
   the permission sheet appears once, Finish creates a traditional-strength

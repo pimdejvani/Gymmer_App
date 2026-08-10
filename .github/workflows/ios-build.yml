@@ -54,6 +54,7 @@ jobs:
   native-intent-tests:
     name: Native App Intent tests
     runs-on: macos-26
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: gymmer_flutter
@@ -74,20 +75,53 @@ jobs:
       - name: Configure iOS project
         run: flutter build ios --debug --simulator --no-pub --config-only
 
-      - name: Run XCTest on an available iPhone simulator
+      - name: Select and boot an iPhone simulator
         run: |
+          set -euo pipefail
           DEVICE_ID=$(xcrun simctl list devices available -j \
-            | jq -r '.devices[][] | select(.name | startswith("iPhone")) | .udid' \
-            | head -1)
+            | jq -r 'first(.devices[][] | select(.name | startswith("iPhone")) | .udid)')
           test -n "$DEVICE_ID"
+          echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+          xcrun simctl list devices | grep "$DEVICE_ID"
           xcrun simctl boot "$DEVICE_ID" || true
-          xcodebuild test \
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+
+      # Keep build and execution separate so a slow macOS runner is immediately
+      # distinguishable from a simulator/test hang in the Actions timeline.
+      - name: Build native tests
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -derivedDataPath "$RUNNER_TEMP/RunnerDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
-            -parallel-testing-enabled YES
+            -parallel-testing-enabled NO
+
+      - name: Execute native tests
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -derivedDataPath "$RUNNER_TEMP/RunnerDerivedData" \
+            -only-testing:RunnerTests \
+            -resultBundlePath "$RUNNER_TEMP/RunnerTests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            -parallel-testing-enabled NO
+
+      - name: Upload native test diagnostics
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-test-diagnostics-${{ github.run_number }}
+          path: ${{ runner.temp }}/RunnerTests.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
 
   build-ios:
     name: Build unsigned iOS app

@@ -3,6 +3,13 @@
 Short log, newest first. Full historic detail is archived in `backup/`
 (gitignored) if ever needed.
 
+## 2026-08-10 — Removed the App Group probe alert
+
+- Removed the temporary `App Group POC v2` launch alert and its probe-only file
+  writes/counter from `SceneDelegate`.
+- Kept the production runtime App Group discovery in the Runner and Live
+  Activity extension, so SideStore-rewritten group identifiers still resolve.
+
 ## 2026-07-16 — System Control dashboard design recorded
 
 - Documented the feasible composed-Control layout and rejected the exploratory
@@ -87,8 +94,8 @@ Implemented on branch `ios` across the widget commits from `cdea8c8` through
   set.
 - Added runtime App Group discovery from the embedded provisioning profile so
   the app and extension continue to agree after SideStore rewrites the group
-  identifier. The temporary `App Group POC v2` launch alert remains and is a
-  release cleanup item in `next_step.md`.
+  identifier. The temporary `App Group POC v2` launch alert used to verify this
+  path was removed on 2026-08-10.
 - At this stage CI added a parallel debug iOS compile check and cancellation of
   superseded branch runs; the current three-job gated pipeline is listed above.
 - Fixed Live Activity page navigation by moving `NavIntent` to a source file

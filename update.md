@@ -3,6 +3,18 @@
 Short log, newest first. Full historic detail is archived in `backup/`
 (gitignored) if ever needed.
 
+## 2026-10-25 — Home Screen widget restored
+
+- Restored the medium Gymmer Home Screen widget alongside the Live Activity,
+  with the existing Start/Add/Filter/Log/Rest/Manage views and App Intents.
+- Restored timeline reloads after session mutations and terminal actions;
+  Live Activity actions still update their targeted Activity first.
+- System Controls remain removed. Face ID authentication unlocks Live Activity
+  interaction; users can stay on the Lock Screen after the padlock opens.
+- Device checks: keep the extension when installing with SideStore, launch
+  Gymmer once, add the medium widget, then verify KG/REP, rest, Finish/Discard,
+  and Live Activity interaction after Face ID without swiping to Home.
+
 ## 2026-08-10 — Removed the App Group probe alert
 
 - Removed the temporary `App Group POC v2` launch alert and its probe-only file

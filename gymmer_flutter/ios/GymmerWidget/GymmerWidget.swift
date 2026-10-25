@@ -13,7 +13,7 @@ import UserNotifications
 // routines.json (Start page). The app-group id is resolved at runtime because
 // SideStore rewrites it — never hard-coded. See docs/widget/WIDGET.md.
 //
-// Deployment target is iOS 17, so interactive Button(intent:) is always usable.
+// Deployment target is iOS 26; interactive Button(intent:) is always usable.
 // =============================================================================
 
 // MARK: - Theme
@@ -792,7 +792,9 @@ extension WStore {
     let target = activityID ?? LiveSync.targetActivityID
     if let target, !target.isEmpty {
       await LiveSync.refresh(activityID: target)
+      WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
     } else {
+      WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
       await LiveSync.refresh()
     }
   }
@@ -800,6 +802,7 @@ extension WStore {
   @available(iOS 17.0, *)
   static func saveAndEnd(_ session: Session, activityID: String? = nil) async {
     save(session)
+    WidgetCenter.shared.reloadTimelines(ofKind: "GymmerWidget")
     await LiveSync.end(activityID: activityID)
   }
 }
@@ -922,6 +925,30 @@ struct GymmerEntry: TimelineEntry {
   let session: Session
   let catalog: [CatalogItem]
   let routines: [RoutineItem]
+}
+
+struct Provider: TimelineProvider {
+  func placeholder(in context: Context) -> GymmerEntry {
+    GymmerEntry(date: Date(), session: Session(), catalog: [], routines: [])
+  }
+
+  func getSnapshot(in context: Context, completion: @escaping (GymmerEntry) -> Void) {
+    completion(GymmerEntry(date: Date(), session: WStore.loadSession(), catalog: WStore.catalog(), routines: WStore.routines()))
+  }
+
+  func getTimeline(in context: Context, completion: @escaping (Timeline<GymmerEntry>) -> Void) {
+    let session = WStore.loadSession()
+    let catalog = WStore.catalog()
+    let routines = WStore.routines()
+    let current = GymmerEntry(date: Date(), session: session, catalog: catalog, routines: routines)
+    // SwiftUI ticks the countdown; only the transition back to Log needs an entry.
+    if session.active && session.ui.page == "log",
+       let end = restEndDate(session), end.timeIntervalSinceNow > 0 {
+      completion(Timeline(entries: [current, GymmerEntry(date: end, session: session, catalog: catalog, routines: routines)], policy: .atEnd))
+    } else {
+      completion(Timeline(entries: [current], policy: .never))
+    }
+  }
 }
 
 // MARK: - Reusable view pieces
@@ -1545,6 +1572,17 @@ private struct ManageView: View {
 
 // MARK: - Router / entry view
 
+struct GymmerWidgetEntryView: View {
+  var entry: GymmerEntry
+
+  var body: some View {
+    GymmerSessionPagesView(entry: entry, showStart: true, isLiveActivity: false)
+      .padding(12)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      .containerBackground(T.bg, for: .widget)
+  }
+}
+
 private struct GymmerSessionPagesView: View {
   var entry: GymmerEntry
   var showStart: Bool
@@ -1570,9 +1608,23 @@ private struct GymmerSessionPagesView: View {
   }
 }
 
+struct GymmerWidget: Widget {
+  let kind = "GymmerWidget"
+
+  var body: some WidgetConfiguration {
+    StaticConfiguration(kind: kind, provider: Provider()) { entry in
+      GymmerWidgetEntryView(entry: entry)
+    }
+    .configurationDisplayName("Gymmer")
+    .description("Log your workout session")
+    .supportedFamilies([.systemMedium])
+  }
+}
+
 @main
 struct GymmerBundle: WidgetBundle {
   var body: some Widget {
+    GymmerWidget()
     GymmerLiveActivity()
   }
 }
